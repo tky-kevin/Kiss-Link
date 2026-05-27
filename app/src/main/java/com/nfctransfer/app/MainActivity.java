@@ -5,18 +5,23 @@ import android.os.Bundle;
 import android.widget.Button;
 import android.widget.TextView;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.nfctransfer.app.util.PermissionHelper;
 
 public class MainActivity extends AppCompatActivity {
 
-    private static final int REQUEST_PERMISSIONS = 100;
-
     private Button btnSend;
     private Button btnReceive;
     private Button btnHistory;
     private TextView tvNfcStatus;
+
+    private final ActivityResultLauncher<String[]> permissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), result -> {
+                updateNfcStatus();
+            });
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -32,7 +37,10 @@ public class MainActivity extends AppCompatActivity {
         btnReceive.setOnClickListener(v -> startActivity(new Intent(this, ReceiveActivity.class)));
         btnHistory.setOnClickListener(v -> startActivity(new Intent(this, HistoryActivity.class)));
 
-        PermissionHelper.requestAllPermissions(this, REQUEST_PERMISSIONS);
+        if (savedInstanceState == null) {
+            String[] perms = PermissionHelper.getRequiredPermissions();
+            permissionLauncher.launch(perms);
+        }
     }
 
     @Override

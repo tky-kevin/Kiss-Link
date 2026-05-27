@@ -87,9 +87,9 @@ public class TransferService extends Service {
             }
 
             @Override
-            public void onFileSent(String fileName) {
+            public void onFileSent(String fileName, long fileSize) {
                 HistoryRepository repo = new HistoryRepository(TransferService.this);
-                repo.insert(new TransferRecord(fileName, -1, "SEND",
+                repo.insert(new TransferRecord(fileName, fileSize, "SENT",
                         System.currentTimeMillis(), "SUCCESS"));
             }
 

@@ -17,6 +17,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
@@ -84,6 +85,17 @@ public class SendActivity extends AppCompatActivity {
                     selectedUris.addAll(uris);
                     btnStartSend.setEnabled(true);
                     Toast.makeText(this, "已選擇 " + uris.size() + " 個檔案", Toast.LENGTH_SHORT).show();
+                }
+            });
+
+    private final ActivityResultLauncher<String[]> permissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), result -> {
+                List<String> missing = PermissionHelper.getMissingPermissions(this);
+                if (missing.isEmpty()) {
+                    startSendFlow();
+                } else {
+                    Toast.makeText(this, "需要權限才能傳送檔案", Toast.LENGTH_SHORT).show();
+                    progressSend.setVisibility(View.GONE);
                 }
             });
 
@@ -157,8 +169,7 @@ public class SendActivity extends AppCompatActivity {
 
         List<String> missing = PermissionHelper.getMissingPermissions(this);
         if (!missing.isEmpty()) {
-            androidx.core.app.ActivityCompat.requestPermissions(this,
-                    missing.toArray(new String[0]), 300);
+            permissionLauncher.launch(missing.toArray(new String[0]));
             return;
         }
 
@@ -311,11 +322,11 @@ public class SendActivity extends AppCompatActivity {
             }
 
             @Override
-            public void onFileSent(String fileName) {
+            public void onFileSent(String fileName, long fileSize) {
                 Toast.makeText(SendActivity.this, "已傳送：" + fileName, Toast.LENGTH_SHORT).show();
 
                 HistoryRepository repo = new HistoryRepository(SendActivity.this);
-                repo.insert(new TransferRecord(fileName, 0, null,
+                repo.insert(new TransferRecord(fileName, fileSize, null,
                         System.currentTimeMillis(), "SENT", "SUCCESS", ip));
             }
 

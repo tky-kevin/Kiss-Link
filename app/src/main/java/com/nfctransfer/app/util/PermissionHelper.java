@@ -19,10 +19,26 @@ import java.util.List;
 
 public class PermissionHelper {
 
+    public static String[] getRequiredPermissions() {
+        List<String> perms = new ArrayList<>();
+        perms.add(Manifest.permission.ACCESS_FINE_LOCATION);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            perms.add(Manifest.permission.NEARBY_WIFI_DEVICES);
+            perms.add(Manifest.permission.READ_MEDIA_IMAGES);
+            perms.add(Manifest.permission.READ_MEDIA_VIDEO);
+            perms.add(Manifest.permission.READ_MEDIA_AUDIO);
+            perms.add(Manifest.permission.POST_NOTIFICATIONS);
+        } else {
+            perms.add(Manifest.permission.READ_EXTERNAL_STORAGE);
+        }
+
+        return perms.toArray(new String[0]);
+    }
+
     public static List<String> getMissingPermissions(Activity activity) {
         List<String> missing = new ArrayList<>();
-
-        String[] required = buildRequiredPermissions();
+        String[] required = getRequiredPermissions();
         for (String permission : required) {
             if (ContextCompat.checkSelfPermission(activity, permission)
                     != PackageManager.PERMISSION_GRANTED) {
@@ -56,20 +72,5 @@ public class PermissionHelper {
                 })
                 .setNegativeButton("取消", null)
                 .show();
-    }
-
-    private static String[] buildRequiredPermissions() {
-        List<String> perms = new ArrayList<>();
-        perms.add(Manifest.permission.ACCESS_FINE_LOCATION);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            perms.add(Manifest.permission.NEARBY_WIFI_DEVICES);
-            perms.add(Manifest.permission.READ_MEDIA_IMAGES);
-            perms.add(Manifest.permission.POST_NOTIFICATIONS);
-        } else {
-            perms.add(Manifest.permission.READ_EXTERNAL_STORAGE);
-        }
-
-        return perms.toArray(new String[0]);
     }
 }

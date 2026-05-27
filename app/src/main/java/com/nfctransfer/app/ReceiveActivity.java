@@ -10,6 +10,8 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -27,8 +29,6 @@ import java.util.List;
 
 public class ReceiveActivity extends AppCompatActivity {
 
-    private static final int REQUEST_PERMISSIONS = 200;
-
     private TextView tvStatus;
     private TextView tvFileInfo;
     private TextView tvSsidDebug;
@@ -44,6 +44,16 @@ public class ReceiveActivity extends AppCompatActivity {
     /** Stored after group creation so QR toggle can reuse them without re-calling createGroup. */
     private String groupSsid;
     private String groupPassphrase;
+
+    private final ActivityResultLauncher<String[]> permissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), result -> {
+                List<String> stillMissing = PermissionHelper.getMissingPermissions(this);
+                if (stillMissing.isEmpty()) {
+                    startReceiveMode();
+                } else {
+                    Toast.makeText(this, "需要權限才能接收檔案", Toast.LENGTH_SHORT).show();
+                }
+            });
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -100,23 +110,7 @@ public class ReceiveActivity extends AppCompatActivity {
         if (missing.isEmpty()) {
             startReceiveMode();
         } else {
-            androidx.core.app.ActivityCompat.requestPermissions(this,
-                    missing.toArray(new String[0]), REQUEST_PERMISSIONS);
-        }
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode,
-                                           @NonNull String[] permissions,
-                                           @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_PERMISSIONS) {
-            List<String> stillMissing = PermissionHelper.getMissingPermissions(this);
-            if (stillMissing.isEmpty()) {
-                startReceiveMode();
-            } else {
-                Toast.makeText(this, "需要權限才能接收檔案", Toast.LENGTH_SHORT).show();
-            }
+            permissionLauncher.launch(missing.toArray(new String[0]));
         }
     }
 
@@ -125,6 +119,11 @@ public class ReceiveActivity extends AppCompatActivity {
     // -------------------------------------------------------------------------
 
     private void startReceiveMode() {
+        if (!wifiDirectManager.isWifiP2pEnabled()) {
+            Toast.makeText(this, "請先開啟 Wi-Fi", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         receiving = true;
         btnStartReceive.setText("停止接收");
         tvStatus.setText("建立 Wi-Fi Direct 群組中...");

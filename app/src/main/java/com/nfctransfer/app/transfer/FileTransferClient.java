@@ -26,7 +26,7 @@ public class FileTransferClient {
 
     public interface Callback {
         void onProgressUpdate(String fileName, int percent);
-        void onFileSent(String fileName);
+        void onFileSent(String fileName, long fileSize);
         void onAllFilesSent(int totalCount);
         void onError(String fileName, Exception e);
     }
@@ -80,8 +80,9 @@ public class FileTransferClient {
                 out.flush();
                 Log.d(TAG, "Sent: " + fileName);
                 final String fn = fileName;
+                final long fs = fileSize;
                 mainHandler.post(() -> {
-                    if (callback != null) callback.onFileSent(fn);
+                    if (callback != null) callback.onFileSent(fn, fs);
                 });
             }
 

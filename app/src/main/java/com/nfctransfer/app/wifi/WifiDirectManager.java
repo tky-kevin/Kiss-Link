@@ -82,6 +82,12 @@ public class WifiDirectManager {
     // Receiver side
     // -------------------------------------------------------------------------
 
+    public boolean isWifiP2pEnabled() {
+        android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager) 
+                context.getSystemService(Context.WIFI_SERVICE);
+        return wm != null && wm.isWifiEnabled();
+    }
+
     /**
      * Creates a persistent Wi-Fi Direct group on this device.
      * The SSID and passphrase are returned via {@code callback} on the main thread.
@@ -228,20 +234,20 @@ public class WifiDirectManager {
                 if (info != null && info.groupFormed) {
                     String ip = GROUP_OWNER_IP;
                     Log.d(TAG, "Connected to group, GO IP=" + ip);
+                    
+                    // Only consume the callback if we are indeed connected
                     ConnectionCallback cb = pendingConnectionCallback;
-                    pendingConnectionCallback = null;
-                    mainHandler.post(() -> {
-                        if (cb != null) cb.onConnected(ip);
-                    });
+                    if (cb != null) {
+                        pendingConnectionCallback = null;
+                        mainHandler.post(() -> cb.onConnected(ip));
+                    }
                 }
             });
         } else {
-            Log.d(TAG, "P2P disconnected");
-            ConnectionCallback cb = pendingConnectionCallback;
-            if (cb != null) {
-                pendingConnectionCallback = null;
-                mainHandler.post(cb::onDisconnected);
-            }
+            Log.d(TAG, "P2P disconnected or connecting...");
+            // Don't clear pendingConnectionCallback immediately on "not connected" 
+            // because we might be in the middle of a connection attempt.
+            // But if we were previously connected and now disconnected, we might want to notify.
         }
     }
 }
