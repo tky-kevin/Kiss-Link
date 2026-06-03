@@ -1,10 +1,13 @@
 package com.kisslink.ui.pairing;
 
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.IBinder;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
@@ -12,7 +15,6 @@ import android.widget.TextView;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.lifecycle.ViewModelProvider;
 
 import com.google.android.material.snackbar.Snackbar;
 import com.kisslink.R;
@@ -27,16 +29,19 @@ import java.util.ArrayList;
 /**
  * NFC 碰觸等待畫面（傳送方 / 接收方共用）。
  *
+ * <p>本畫面已不再自行持有 Wi-Fi Direct 連線；連線由 {@link FileTransferService} 擁有，
+ * 本畫面只負責：
  * <ul>
- *   <li><b>SENDER</b>：持有從 MainActivity 傳入的檔案 URIs，
- *       建立 Wi-Fi Direct Group + 啟動 HCE，等待對方碰觸。
- *       連線後將 URIs 帶入 {@link TransferActivity} 立即開始傳送。</li>
- *   <li><b>RECEIVER</b>：啟用 NFC Reader 等待碰觸，
- *       讀到憑證後靜默連線（{@link com.kisslink.wifidirect.WifiDirectManager#connectAsClient}）。</li>
+ *   <li>啟動並綁定 {@link FileTransferService}（帶角色）。</li>
+ *   <li>RECEIVER：啟用 NFC Reader，讀到憑證後交給 Service 連線。</li>
+ *   <li>觀察連線狀態，{@link ConnectionState#CONNECTED} 後跳轉 {@link TransferActivity}。</li>
  * </ul>
  */
 @RequiresApi(api = Build.VERSION_CODES.Q)
 public class PairingActivity extends AppCompatActivity {
+
+    /** 配對角色。 */
+    public enum Role { SENDER, RECEIVER }
 
     private static final String EXTRA_ROLE = "role";
     private static final String EXTRA_URIS = "uris";   // ArrayList<Uri>
@@ -46,9 +51,15 @@ public class PairingActivity extends AppCompatActivity {
     private Button   btnCancel;
     private View     nfcAnimView;
 
-    // ── ViewModel & NFC ───────────────────────────────────────
-    private PairingViewModel viewModel;
-    private NFCManager       nfcManager;
+    // ── NFC & Service ─────────────────────────────────────────
+    private NFCManager nfcManager;
+    private Role       role;
+
+    private FileTransferService.TransferBinder binder;
+    private boolean bound          = false;
+    private boolean navigating     = false;
+    private boolean filesEnqueued  = false; // 傳送方待傳檔案是否已交給 Service（防重複）
+    @Nullable private GroupCredential pendingCredential; // NFC 早於 bind 時暫存
 
     // ══════════════════════════════════════════════════════════
     //  Factory
@@ -57,9 +68,7 @@ public class PairingActivity extends AppCompatActivity {
     /**
      * @param uris 傳送方選好的檔案 URIs（SENDER 必填；RECEIVER 傳 null）
      */
-    public static Intent newIntent(Context ctx,
-                                   PairingViewModel.Role role,
-                                   @Nullable ArrayList<Uri> uris) {
+    public static Intent newIntent(Context ctx, Role role, @Nullable ArrayList<Uri> uris) {
         Intent i = new Intent(ctx, PairingActivity.class);
         i.putExtra(EXTRA_ROLE, role.name());
         if (uris != null && !uris.isEmpty()) {
@@ -67,6 +76,48 @@ public class PairingActivity extends AppCompatActivity {
         }
         return i;
     }
+
+    // ══════════════════════════════════════════════════════════
+    //  Service 連線
+    // ══════════════════════════════════════════════════════════
+
+    private final ServiceConnection connection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            binder = (FileTransferService.TransferBinder) service;
+            bound = true;
+
+            binder.getConnectionState().observe(PairingActivity.this, state -> {
+                updateStatusText(state);
+                if (state == ConnectionState.CONNECTED) goToTransfer();
+            });
+            binder.getConnectionError().observe(PairingActivity.this, err -> {
+                if (err != null && !err.isEmpty()) showError(err);
+            });
+
+            // 若 NFC 在綁定前就讀到憑證，補送一次
+            if (role == Role.RECEIVER && pendingCredential != null) {
+                binder.submitReceiverCredential(pendingCredential);
+                pendingCredential = null;
+            }
+
+            // 傳送方：一綁定就把待傳檔案交給 Service。實際開送由 Service 在 server 握手後自動觸發，
+            // 不再依賴導航到 TransferActivity 的時機（修正接收方卡在「等待傳送方」的問題）。
+            if (role == Role.SENDER && !filesEnqueued) {
+                ArrayList<Uri> uris = getIntent().getParcelableArrayListExtra(EXTRA_URIS);
+                if (uris != null && !uris.isEmpty()) {
+                    binder.enqueueFiles(uris);
+                    filesEnqueued = true;
+                }
+            }
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            bound = false;
+            binder = null;
+        }
+    };
 
     // ══════════════════════════════════════════════════════════
     //  生命週期
@@ -78,29 +129,28 @@ public class PairingActivity extends AppCompatActivity {
         setContentView(R.layout.activity_pairing);
         bindViews();
 
-        PairingViewModel.Role role = PairingViewModel.Role.valueOf(
-                getIntent().getStringExtra(EXTRA_ROLE));
-
-        viewModel = new ViewModelProvider(this).get(PairingViewModel.class);
+        role = Role.valueOf(getIntent().getStringExtra(EXTRA_ROLE));
         nfcManager = new NFCManager(this);
-
-        viewModel.init(role, this);
         setupUiForRole(role);
-        observeViewModel();
 
-        btnCancel.setOnClickListener(v -> finish());
+        btnCancel.setOnClickListener(v -> { stopSessionService(); finish(); });
+
+        // 啟動並綁定 Service（帶角色）。Service 立即接手連線：
+        //  SENDER  → 建立群組 + 立即 listen；RECEIVER → 等 NFC 憑證。
+        Intent svc = (role == Role.SENDER)
+                ? FileTransferService.senderIntent(this)
+                : FileTransferService.receiverIntent(this);
+        startForegroundService(svc);
+        bindService(svc, connection, BIND_AUTO_CREATE);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        viewModel.registerReceiver(this);
-
-        // RECEIVER：啟用 NFC Reader 模式
-        if (viewModel.getRole() == PairingViewModel.Role.RECEIVER) {
+        if (role == Role.RECEIVER) {
             nfcManager.enableReaderMode(
                     this,
-                    cred -> runOnUiThread(() -> viewModel.onNfcCredentialReceived(cred)),
+                    cred -> runOnUiThread(() -> onCredential(cred)),
                     err  -> runOnUiThread(() -> showError(err)));
         }
     }
@@ -108,12 +158,54 @@ public class PairingActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        viewModel.unregisterReceiver(this);
-        nfcManager.disableReaderMode(this);
+        if (role == Role.RECEIVER) nfcManager.disableReaderMode(this);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (bound) {
+            unbindService(connection);
+            bound = false;
+        }
+        // 使用者中途離開（非前往傳輸畫面）→ 結束整個 session，避免殘留的群組/前景服務。
+        if (isFinishing() && !navigating) stopSessionService();
     }
 
     // ══════════════════════════════════════════════════════════
-    //  UI 初始化
+    //  NFC 憑證
+    // ══════════════════════════════════════════════════════════
+
+    private void onCredential(GroupCredential cred) {
+        if (binder != null) {
+            binder.submitReceiverCredential(cred);
+        } else {
+            pendingCredential = cred; // 待 onServiceConnected 補送
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  跳轉
+    // ══════════════════════════════════════════════════════════
+
+    private void goToTransfer() {
+        if (navigating) return;
+        navigating = true; // 避免重複觸發，並讓 onDestroy 不要停掉 Service
+
+        ArrayList<Uri> uris = getIntent().getParcelableArrayListExtra(EXTRA_URIS);
+        startActivity(TransferActivity.newIntent(
+                this,
+                role == Role.SENDER ? TransferActivity.ROLE_SENDER : TransferActivity.ROLE_RECEIVER,
+                uris));
+        finish();
+    }
+
+    private void stopSessionService() {
+        stopService(new Intent(this, FileTransferService.class));
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  UI
     // ══════════════════════════════════════════════════════════
 
     private void bindViews() {
@@ -124,13 +216,12 @@ public class PairingActivity extends AppCompatActivity {
         nfcAnimView = findViewById(R.id.nfcAnimView);
     }
 
-    private void setupUiForRole(PairingViewModel.Role role) {
-        if (role == PairingViewModel.Role.SENDER) {
+    private void setupUiForRole(Role role) {
+        if (role == Role.SENDER) {
             tvRole.setText("傳送方");
             tvStatus.setText("正在建立連線…");
             tvHint.setText("等待對方靠近並碰觸");
 
-            // 顯示已選幾個檔案
             ArrayList<Uri> uris = getIntent().getParcelableArrayListExtra(EXTRA_URIS);
             if (uris != null && !uris.isEmpty()) {
                 tvHint.setText("已選 " + uris.size() + " 個檔案，等待碰觸後立即傳送");
@@ -142,21 +233,6 @@ public class PairingActivity extends AppCompatActivity {
         }
     }
 
-    // ══════════════════════════════════════════════════════════
-    //  LiveData 觀察
-    // ══════════════════════════════════════════════════════════
-
-    private void observeViewModel() {
-        viewModel.getConnectionState().observe(this, state -> {
-            updateStatusText(state);
-            if (state == ConnectionState.CONNECTED) onConnectionEstablished();
-        });
-
-        viewModel.getError().observe(this, err -> {
-            if (err != null && !err.isEmpty()) showError(err);
-        });
-    }
-
     private void updateStatusText(ConnectionState state) {
         switch (state) {
             case CREATING_GROUP: tvStatus.setText("建立 Wi-Fi Direct 群組…");  break;
@@ -166,34 +242,6 @@ public class PairingActivity extends AppCompatActivity {
             case ERROR:          tvStatus.setText("連線失敗，請重試");             break;
             default: break;
         }
-    }
-
-    // ══════════════════════════════════════════════════════════
-    //  連線成功
-    // ══════════════════════════════════════════════════════════
-
-    private void onConnectionEstablished() {
-        GroupCredential cred = viewModel.getLastCredential();
-        PairingViewModel.Role role = viewModel.getRole();
-
-        // 1. 啟動前景 Service（傳輸通知 + 保持 Wi-Fi 存活）
-        if (cred != null) {
-            Intent svcIntent = (role == PairingViewModel.Role.SENDER)
-                    ? FileTransferService.senderIntent(this, cred)
-                    : FileTransferService.receiverIntent(this, cred);
-            startForegroundService(svcIntent);
-        }
-
-        // 2. 帶著 URIs 跳轉到傳輸畫面
-        ArrayList<Uri> uris = getIntent().getParcelableArrayListExtra(EXTRA_URIS);
-        Intent i = TransferActivity.newIntent(
-                this,
-                role == PairingViewModel.Role.SENDER
-                        ? TransferActivity.ROLE_SENDER
-                        : TransferActivity.ROLE_RECEIVER,
-                uris);
-        startActivity(i);
-        finish();
     }
 
     private void showError(String msg) {

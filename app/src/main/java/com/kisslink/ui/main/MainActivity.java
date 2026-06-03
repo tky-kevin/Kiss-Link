@@ -18,7 +18,6 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.kisslink.R;
 import com.kisslink.ui.pairing.PairingActivity;
-import com.kisslink.ui.pairing.PairingViewModel;
 import com.kisslink.util.PermissionHelper;
 
 import java.util.ArrayList;
@@ -69,7 +68,7 @@ public class MainActivity extends AppCompatActivity {
 
                         // 帶著選好的檔案進入配對畫面
                         startActivity(
-                                PairingActivity.newIntent(this, PairingViewModel.Role.SENDER, selected));
+                                PairingActivity.newIntent(this, PairingActivity.Role.SENDER, selected));
                     });
 
     // ══════════════════════════════════════════════════════════
@@ -134,6 +133,6 @@ public class MainActivity extends AppCompatActivity {
             PermissionHelper.requestPermissions(this);
             return;
         }
-        startActivity(PairingActivity.newIntent(this, PairingViewModel.Role.RECEIVER, null));
+        startActivity(PairingActivity.newIntent(this, PairingActivity.Role.RECEIVER, null));
     }
 }

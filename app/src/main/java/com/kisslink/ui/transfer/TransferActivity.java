@@ -60,9 +60,6 @@ public class TransferActivity extends AppCompatActivity {
     private final ArrayList<Uri> selectedUris = new ArrayList<>();
     private SelectedFileAdapter  fileAdapter;
 
-    /** 是否已觸發自動傳送（防止重複觸發）。 */
-    private boolean autoSendTriggered = false;
-
     // ── SAF 追加選擇器（可在傳送中追加）───────────────────────────
     private final ActivityResultLauncher<String[]> addFileLauncher =
             registerForActivityResult(
@@ -196,21 +193,13 @@ public class TransferActivity extends AppCompatActivity {
                 break;
 
             case CONNECTED:
+                // 送檔由 Service 在握手完成後自動驅動（檔案已於 PairingActivity 交付），
+                // 此處只更新畫面文字，不再從 UI 觸發傳送，避免重複送與時序耦合。
                 tvPhase.setText(ROLE_SENDER.equals(role)
-                        ? "連線成功" : "已連線，等待傳送方…");
-
-                // SENDER：若有預載 URIs，自動觸發傳送（只觸發一次）
-                if (ROLE_SENDER.equals(role)
-                        && !selectedUris.isEmpty()
-                        && !autoSendTriggered) {
-                    autoSendTriggered = true;
-                    tvPhase.setText("連線成功，開始傳送…");
-                    viewModel.sendFiles(new ArrayList<>(selectedUris));
+                        ? "連線成功，傳送中…" : "已連線，等待傳送方…");
+                if (ROLE_SENDER.equals(role)) {
                     btnSend.setEnabled(false);
                     btnAddFiles.setEnabled(false);
-                } else if (ROLE_SENDER.equals(role)) {
-                    // 沒有預載時手動選
-                    btnSend.setEnabled(!selectedUris.isEmpty());
                 }
                 break;
 
