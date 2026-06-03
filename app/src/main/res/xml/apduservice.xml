@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    KissLink HCE AID 宣告。
+    AID F04B495353 = F0 (私有前綴) + "KISS" ASCII
+    category="other" 表示非支付用途，不與系統錢包衝突。
+-->
+<host-apdu-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/app_name"
+    android:requireDeviceUnlock="false">
+
+    <aid-group
+        android:category="other"
+        android:description="@string/app_name">
+
+        <aid-filter android:name="F04B495353"/>
+
+    </aid-group>
+
+</host-apdu-service>

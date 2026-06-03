@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    NFC 動畫佔位圓形背景。
+    正式版替換為 Lottie AnimationView（app:lottie_rawRes="@raw/nfc_pulse"）
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 外環 -->
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="#1A1565C0"/>
+            <stroke android:width="2dp" android:color="#1565C0"/>
+        </shape>
+    </item>
+    <!-- 內圓 -->
+    <item
+        android:left="20dp" android:top="20dp"
+        android:right="20dp" android:bottom="20dp">
+        <shape android:shape="oval">
+            <solid android:color="#E8F0FE"/>
+        </shape>
+    </item>
+</layer-list>

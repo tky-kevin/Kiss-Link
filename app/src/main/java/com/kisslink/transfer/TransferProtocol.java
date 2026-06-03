@@ -1,0 +1,184 @@
+package com.kisslink.transfer;
+
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.zip.CRC32;
+
+/**
+ * KissLink 二進位傳輸協定（版本 1）。
+ *
+ * <h3>封包結構（Header 固定 64 bytes，Big-Endian）</h3>
+ * <pre>
+ *  Offset │ Size │ Field
+ *  ───────┼──────┼─────────────────────────────────
+ *    0    │  4   │ MAGIC        0x4B4C494E ("KLIN")
+ *    4    │  1   │ VERSION      0x01
+ *    5    │  1   │ TYPE         見 TYPE_* 常數
+ *    6    │  2   │ FILE_COUNT   此 session 總檔案數
+ *    8    │  4   │ FILE_ID      當前檔案序號（0-based）
+ *   12    │  8   │ TOTAL_SIZE   檔案總位元組數
+ *   20    │  8   │ OFFSET       本 chunk 在檔案中的起始位置
+ *   28    │  4   │ CHUNK_LEN    本封包 payload 長度
+ *   32    │  2   │ META_LEN     FILE_META 封包的 JSON 長度
+ *   34    │  4   │ CRC32        payload 的 CRC32
+ *   38    │ 26   │ RESERVED     保留
+ *  ───────┴──────┴─────────────────────────────────
+ *  Total  64 bytes
+ * </pre>
+ *
+ * <h3>交握流程</h3>
+ * <pre>
+ *  RECEIVER (TCP Client)           SENDER (TCP Server / GO)
+ *  ─────────────────────           ────────────────────────
+ *  ← connect TCP                   accept() →
+ *  HANDSHAKE         ──────────►
+ *                    ◄──────────   HANDSHAKE_ACK
+ *
+ *  （對每個檔案重複）
+ *                    ◄──────────   FILE_META + JSON
+ *  READY_ACK         ──────────►
+ *                    ◄──────────   DATA_CHUNK × N
+ *  PROGRESS_ACK      ──────────►   （可選，每 N chunk 回一次）
+ *                    ◄──────────   COMPLETE
+ *  COMPLETE_ACK      ──────────►
+ * </pre>
+ */
+public final class TransferProtocol {
+
+    private TransferProtocol() {}
+
+    // ── Magic & Version ────────────────────────────────────────
+    public static final int  MAGIC   = 0x4B4C494E;
+    public static final byte VERSION = 0x01;
+
+    // ── Header Size ────────────────────────────────────────────
+    public static final int HEADER_SIZE = 64;
+
+    // ── Chunk Size ─────────────────────────────────────────────
+    /** 每次讀寫的資料塊大小（512 KB），在 Wi-Fi Direct 上平衡記憶體與吞吐量。 */
+    public static final int CHUNK_SIZE = 512 * 1024;
+
+    // ── Packet Types ───────────────────────────────────────────
+    public static final byte TYPE_HANDSHAKE     = 0x01;
+    public static final byte TYPE_HANDSHAKE_ACK = 0x02;
+    public static final byte TYPE_FILE_META     = 0x03;
+    public static final byte TYPE_READY_ACK     = 0x04;
+    public static final byte TYPE_DATA_CHUNK    = 0x05;
+    public static final byte TYPE_PROGRESS_ACK  = 0x06;
+    public static final byte TYPE_COMPLETE      = 0x07;
+    public static final byte TYPE_COMPLETE_ACK  = 0x08;
+    public static final byte TYPE_CANCEL        = 0x09;
+    public static final byte TYPE_ERROR         = 0x0A;
+
+    // ══════════════════════════════════════════════════════════
+    //  Header POJO
+    // ══════════════════════════════════════════════════════════
+
+    public static class Header {
+        public int   magic     = MAGIC;
+        public byte  version   = VERSION;
+        public byte  type;
+        public short fileCount;
+        public int   fileId;
+        public long  totalSize;
+        public long  offset;
+        public int   chunkLen;
+        public short metaLen;
+        public int   crc32;
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  Encode / Decode
+    // ══════════════════════════════════════════════════════════
+
+    public static byte[] encodeHeader(Header h) {
+        ByteBuffer buf = ByteBuffer.allocate(HEADER_SIZE).order(ByteOrder.BIG_ENDIAN);
+        buf.putInt(h.magic);
+        buf.put(h.version);
+        buf.put(h.type);
+        buf.putShort(h.fileCount);
+        buf.putInt(h.fileId);
+        buf.putLong(h.totalSize);
+        buf.putLong(h.offset);
+        buf.putInt(h.chunkLen);
+        buf.putShort(h.metaLen);
+        buf.putInt(h.crc32);
+        // remaining 26 bytes stay 0
+        return buf.array();
+    }
+
+    public static Header decodeHeader(byte[] raw) throws InvalidPacketException {
+        if (raw == null || raw.length < HEADER_SIZE)
+            throw new InvalidPacketException("Header too short: " + (raw == null ? 0 : raw.length));
+        ByteBuffer buf = ByteBuffer.wrap(raw, 0, HEADER_SIZE).order(ByteOrder.BIG_ENDIAN);
+        Header h = new Header();
+        h.magic     = buf.getInt();
+        h.version   = buf.get();
+        h.type      = buf.get();
+        h.fileCount = buf.getShort();
+        h.fileId    = buf.getInt();
+        h.totalSize = buf.getLong();
+        h.offset    = buf.getLong();
+        h.chunkLen  = buf.getInt();
+        h.metaLen   = buf.getShort();
+        h.crc32     = buf.getInt();
+        if (h.magic != MAGIC)
+            throw new InvalidPacketException("Bad magic: 0x" + Integer.toHexString(h.magic));
+        return h;
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  Header Factory Methods
+    // ══════════════════════════════════════════════════════════
+
+    public static Header makeHandshake() {
+        Header h = new Header(); h.type = TYPE_HANDSHAKE; return h;
+    }
+    public static Header makeHandshakeAck() {
+        Header h = new Header(); h.type = TYPE_HANDSHAKE_ACK; return h;
+    }
+    public static Header makeFileMeta(int fileId, int fileCount, long totalSize, int metaLen) {
+        Header h = new Header();
+        h.type = TYPE_FILE_META;
+        h.fileId = fileId; h.fileCount = (short) fileCount;
+        h.totalSize = totalSize; h.metaLen = (short) metaLen;
+        return h;
+    }
+    public static Header makeReadyAck(int fileId) {
+        Header h = new Header(); h.type = TYPE_READY_ACK; h.fileId = fileId; return h;
+    }
+    public static Header makeDataChunk(int fileId, long offset, int chunkLen, int crc32) {
+        Header h = new Header();
+        h.type = TYPE_DATA_CHUNK;
+        h.fileId = fileId; h.offset = offset;
+        h.chunkLen = chunkLen; h.crc32 = crc32;
+        return h;
+    }
+    public static Header makeComplete(int fileId) {
+        Header h = new Header(); h.type = TYPE_COMPLETE; h.fileId = fileId; return h;
+    }
+    public static Header makeCompleteAck(int fileId) {
+        Header h = new Header(); h.type = TYPE_COMPLETE_ACK; h.fileId = fileId; return h;
+    }
+    public static Header makeCancel() {
+        Header h = new Header(); h.type = TYPE_CANCEL; return h;
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  CRC32
+    // ══════════════════════════════════════════════════════════
+
+    public static int crc32(byte[] data, int off, int len) {
+        CRC32 c = new CRC32();
+        c.update(data, off, len);
+        return (int) c.getValue();
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  Exception
+    // ══════════════════════════════════════════════════════════
+
+    public static class InvalidPacketException extends Exception {
+        public InvalidPacketException(String msg) { super(msg); }
+    }
+}

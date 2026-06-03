@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.kisslink">
+
+    <!-- ══════════════════════════════════════════════════════════
+         權限宣告
+    ═══════════════════════════════════════════════════════════ -->
+
+    <!-- NFC -->
+    <uses-permission android:name="android.permission.NFC"/>
+    <uses-feature android:name="android.hardware.nfc" android:required="true"/>
+    <uses-feature android:name="android.hardware.nfc.hce" android:required="true"/>
+
+    <!-- Wi-Fi Direct -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- API 29：Wi-Fi Direct 需要位置權限（用於掃描 P2P peers）-->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!-- API 33+：以 NEARBY_WIFI_DEVICES 取代部分位置權限 -->
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="tiramisu"/>
+
+    <!-- 前景 Service（傳輸通知）-->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
+    <!-- 媒體存取（Scoped Storage, API 33+）-->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED"/>
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.KissLink">
+
+        <!-- ── 主畫面 ────────────────────────────────────────── -->
+        <activity
+            android:name=".ui.main.MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+
+        <!-- ── 配對畫面 ──────────────────────────────────────── -->
+        <activity android:name=".ui.pairing.PairingActivity"
+            android:exported="false"/>
+
+        <!-- ── 傳輸畫面 ──────────────────────────────────────── -->
+        <activity android:name=".ui.transfer.TransferActivity"
+            android:exported="false"/>
+
+        <!-- ── 除錯測試畫面（Release 可移除）────────────────────── -->
+        <activity android:name=".debug.WifiDirectTestActivity"
+            android:exported="true"
+            android:label="WiFi Direct Test"/>
+
+        <!-- ══════════════════════════════════════════════════
+             NFC HCE Service
+        ═══════════════════════════════════════════════════ -->
+        <service
+            android:name=".nfc.KissLinkHCEService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NFC_SERVICE">
+            <intent-filter>
+                <action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.nfc.cardemulation.host_apdu_service"
+                android:resource="@xml/apduservice"/>
+        </service>
+
+        <!-- ══════════════════════════════════════════════════
+             檔案傳輸前景 Service
+        ═══════════════════════════════════════════════════ -->
+        <service
+            android:name=".transfer.FileTransferService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"/>
+
+    </application>
+
+</manifest>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material 3 Palette -->
+    <color name="primary">#1565C0</color>
+    <color name="on_primary">#FFFFFF</color>
+    <color name="primary_container">#D6E4FF</color>
+    <color name="secondary">#2E7D32</color>
+    <color name="on_secondary">#FFFFFF</color>
+    <color name="background">#F5F7FA</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="on_surface">#1C1C1E</color>
+    <color name="on_surface_variant">#757575</color>
+    <color name="outline">#BDBDBD</color>
+    <color name="error">#B71C1C</color>
+    <color name="success">#2E7D32</color>
+</resources>

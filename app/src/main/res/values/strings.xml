@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">KissLink</string>
+    <string name="btn_send">傳送</string>
+    <string name="btn_receive">接收</string>
+    <string name="btn_cancel">取消</string>
+    <string name="btn_add_files">選擇檔案</string>
+    <string name="btn_start_send">開始傳送</string>
+    <string name="status_waiting">等待連線…</string>
+    <string name="status_connected">連線成功</string>
+    <string name="history_empty">尚無傳輸紀錄</string>
+</resources>
