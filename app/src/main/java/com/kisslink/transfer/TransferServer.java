@@ -61,6 +61,18 @@ public class TransferServer {
     private volatile boolean cancelled = false;
     private final List<Uri> fileQueue = new CopyOnWriteArrayList<>();
 
+    private volatile TransferEventListener eventListener;
+    // 進行中的檔案（供失敗時回報）
+    private String curName; private long curSize;
+
+    /** 設定逐檔完成回呼（用於可靠的歷史紀錄，不經會合併的 LiveData）。 */
+    public void setEventListener(TransferEventListener l) { this.eventListener = l; }
+
+    private void fireFileCompleted(String name, long size, long speed, boolean success) {
+        TransferEventListener l = eventListener;
+        if (l != null && name != null) l.onFileCompleted(name, size, speed, success);
+    }
+
     private final MutableLiveData<TransferProgress> progressLd =
             new MutableLiveData<>(TransferProgress.waiting());
 
@@ -157,6 +169,7 @@ public class TransferServer {
         } catch (IOException | TransferProtocol.InvalidPacketException e) {
             if (!cancelled) {
                 Log.e(TAG, "Send error", e);
+                fireFileCompleted(curName, curSize, 0, false); // 進行中的檔案記為失敗
                 postProgress(TransferProgress.error("傳送失敗：" + e.getMessage()));
             }
         } finally {
@@ -170,6 +183,7 @@ public class TransferServer {
         String name = FileUtils.getFileName(cr, uri);
         long   size = FileUtils.getFileSize(cr, uri);
         String mime = cr.getType(uri);
+        curName = name; curSize = size; // 標記進行中（供失敗回報）
 
         // 1. 發送 FILE_META（JSON）
         JSONObject meta = new JSONObject();
@@ -218,6 +232,11 @@ public class TransferServer {
         TransferProtocol.Header compAck = readHeader();
         if (compAck.type != TransferProtocol.TYPE_COMPLETE_ACK)
             throw new TransferProtocol.InvalidPacketException("Expected COMPLETE_ACK");
+
+        long elapsed = System.currentTimeMillis() - startMs;
+        long avgSpeed = elapsed > 0 ? offset * 1000 / elapsed : 0;
+        fireFileCompleted(name, size, avgSpeed, true); // 可靠的逐檔成功回報
+        curName = null;
 
         postProgress(new TransferProgress.Builder()
                 .phase(TransferProgress.Phase.FILE_DONE)

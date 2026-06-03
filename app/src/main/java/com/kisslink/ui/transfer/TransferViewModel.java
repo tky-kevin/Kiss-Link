@@ -13,17 +13,18 @@ import androidx.annotation.NonNull;
 import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
+import androidx.lifecycle.Observer;
 
 import com.kisslink.transfer.FileTransferService;
-import com.kisslink.transfer.TransferProgress;
+import com.kisslink.transfer.SessionState;
 
 import java.util.List;
 
 /**
  * TransferActivity 的 ViewModel，負責與 {@link FileTransferService} 通訊。
  *
- * <p>透過 Service Binding 取得 LiveData，即使 Activity 重建（螢幕旋轉）
- * 也能持續觀察傳輸進度。
+ * <p>透過 Service Binding 取得單一 {@link SessionState} LiveData；即使 Activity 重建
+ * （螢幕旋轉）也能持續觀察。橋接觀察者在解綁時會被移除，避免洩漏。
  */
 public class TransferViewModel extends AndroidViewModel {
 
@@ -33,8 +34,12 @@ public class TransferViewModel extends AndroidViewModel {
     private boolean bound = false;
 
     // 中繼 LiveData，確保未綁定前也能安全觀察
-    private final MutableLiveData<TransferProgress> progressLd =
-            new MutableLiveData<>(TransferProgress.waiting());
+    private final MutableLiveData<SessionState> stateLd = new MutableLiveData<>();
+
+    // 橋接：把 Service 的 SessionState 轉送到 stateLd（保留參照以便移除，避免 observeForever 洩漏）
+    private LiveData<SessionState> boundSource;
+    private final Observer<SessionState> bridge =
+            s -> { if (s != null) stateLd.postValue(s); };
 
     private final ServiceConnection connection = new ServiceConnection() {
         @Override
@@ -42,15 +47,15 @@ public class TransferViewModel extends AndroidViewModel {
             serviceBinder = (FileTransferService.TransferBinder) service;
             bound = true;
             Log.d(TAG, "Service bound");
-            // getProgress() 永遠非 null（服務層 serviceLd 在 Service 建立時即初始化）
-            serviceBinder.getProgress()
-                    .observeForever(p -> { if (p != null) progressLd.postValue(p); });
+            boundSource = serviceBinder.getSessionState();
+            boundSource.observeForever(bridge);
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
             bound = false;
             serviceBinder = null;
+            detachSource();
             Log.d(TAG, "Service disconnected");
         }
     };
@@ -68,14 +73,22 @@ public class TransferViewModel extends AndroidViewModel {
 
     public void unbindService(Context ctx) {
         if (bound) {
+            detachSource();
             ctx.unbindService(connection);
             bound = false;
         }
     }
 
+    private void detachSource() {
+        if (boundSource != null) {
+            boundSource.removeObserver(bridge);
+            boundSource = null;
+        }
+    }
+
     // ── 傳送方 API ────────────────────────────────────────────
 
-    /** 傳送方：傳入使用者選擇的檔案 URIs，開始傳輸。 */
+    /** 傳送方：傳入使用者選擇的檔案 URIs（送檔由 Service 在握手後驅動）。 */
     public void sendFiles(List<Uri> uris) {
         if (serviceBinder != null) {
             serviceBinder.sendFiles(uris);
@@ -91,11 +104,11 @@ public class TransferViewModel extends AndroidViewModel {
 
     // ── LiveData ──────────────────────────────────────────────
 
-    public LiveData<TransferProgress> getProgress() { return progressLd; }
+    public LiveData<SessionState> getState() { return stateLd; }
 
     @Override
     protected void onCleared() {
         super.onCleared();
-        // ViewModel 銷毀時不解綁（由 Activity 在 onStop 解綁）
+        detachSource();
     }
 }

@@ -17,8 +17,10 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.core.app.NotificationCompat;
 import androidx.lifecycle.LiveData;
+import androidx.lifecycle.MediatorLiveData;
 import androidx.lifecycle.MutableLiveData;
 
+import com.kisslink.data.repository.TransferRepository;
 import com.kisslink.model.GroupCredential;
 import com.kisslink.nfc.KissLinkHCEService;
 import com.kisslink.ui.transfer.TransferActivity;
@@ -75,9 +77,17 @@ public class FileTransferService extends Service {
     private boolean serverReady = false; // server 已與接收方握手完成
     private boolean sendStarted = false; // 已開始送檔（避免重複）
 
-    /** 服務層統一進度 LiveData —— 永遠非 null。Activity 透過 Binder 觀察。 */
+    /** 傳輸層進度匯總（內部用）—— server/client 的進度都橋接到此。 */
     private final MutableLiveData<TransferProgress> serviceLd =
             new MutableLiveData<>(TransferProgress.waiting());
+
+    /** 對 UI 公開的「單一狀態」—— 由連線狀態 + 連線錯誤 + 傳輸進度三者合併而成。 */
+    private final MediatorLiveData<SessionState> sessionLd = new MediatorLiveData<>();
+
+    // recomputeSession 用的最新來源值
+    private ConnectionState lastConn      = ConnectionState.IDLE;
+    @Nullable private String          lastConnError = null;
+    @Nullable private TransferProgress lastTransfer = null;
 
     private final TransferBinder binder = new TransferBinder();
 
@@ -99,14 +109,8 @@ public class FileTransferService extends Service {
 
     public class TransferBinder extends Binder {
 
-        /** 傳輸進度 LiveData（永遠非 null）。 */
-        public LiveData<TransferProgress> getProgress() { return serviceLd; }
-
-        /** Wi-Fi Direct 連線狀態 LiveData，供 PairingActivity 觀察。 */
-        public LiveData<ConnectionState> getConnectionState() { return wifiManager.getState(); }
-
-        /** 連線錯誤訊息（連線層）。 */
-        public LiveData<String> getConnectionError() { return wifiManager.getError(); }
+        /** 單一 session 狀態（連線 + 傳輸 + 錯誤合一）—— UI 唯一需要觀察的對象。 */
+        public LiveData<SessionState> getSessionState() { return sessionLd; }
 
         @Nullable public GroupCredential getCredential() { return credential; }
 
@@ -123,7 +127,9 @@ public class FileTransferService extends Service {
          * 自動觸發（{@link #maybeStartSending()}），不依賴 UI 導航時機。
          */
         public void enqueueFiles(List<Uri> uris) {
-            if (sendStarted) return; // 已開送則忽略後續入列，避免重複
+            // 檔案集每場（每個 Service 實例）只接受一次：避免 PairingActivity 重建/多次綁定
+            // 重複 enqueue 造成 fileQueue 累加、同一批檔案被送多輪。
+            if (sendStarted || haveFiles) return;
             if (transferServer != null && uris != null && !uris.isEmpty()) {
                 transferServer.enqueue(uris);
                 haveFiles = true;
@@ -158,6 +164,26 @@ public class FileTransferService extends Service {
         wifiManager = new WifiDirectManager(this);
         wifiManager.registerReceiver(this);
         wireWifiObservers();
+
+        // 合併三個來源 → 單一 SessionState（UI 唯一觀察點）。
+        sessionLd.addSource(wifiManager.getState(), cs -> { lastConn = cs; recomputeSession(); });
+        sessionLd.addSource(wifiManager.getError(), e -> { lastConnError = e; recomputeSession(); });
+        sessionLd.addSource(serviceLd,             tp -> { lastTransfer = tp; recomputeSession(); });
+        recomputeSession();
+    }
+
+    /**
+     * 計算當前 SessionState：傳輸層事件優先（一旦進入傳輸階段就以它為準），
+     * 其次是連線錯誤，最後才是連線階段。
+     */
+    private void recomputeSession() {
+        if (lastTransfer != null && lastTransfer.phase != TransferProgress.Phase.WAITING) {
+            sessionLd.setValue(SessionState.fromTransfer(lastTransfer));
+        } else if (lastConnError != null && !lastConnError.isEmpty()) {
+            sessionLd.setValue(SessionState.error(lastConnError));
+        } else {
+            sessionLd.setValue(SessionState.fromConnection(lastConn));
+        }
     }
 
     @Override
@@ -170,6 +196,7 @@ public class FileTransferService extends Service {
 
             if (ROLE_SENDER.equals(role)) {
                 transferServer = new TransferServer(this);
+                transferServer.setEventListener(this::onFileCompleted);
                 bridgeToServiceLd(transferServer.getProgress());
                 wifiManager.createGroupAsGO(); // credential 就緒後 → HCE + 立即 listen（見 wireWifiObservers）
             }
@@ -218,6 +245,7 @@ public class FileTransferService extends Service {
                     && credential != null) {
                 clientStarted = true;
                 transferClient = new TransferClient(this, credential);
+                transferClient.setEventListener(this::onFileCompleted);
                 bridgeToServiceLd(transferClient.getProgress());
                 transferClient.connect();
                 Log.i(TAG, "Receiver: P2P connected → starting TransferClient");
@@ -235,6 +263,17 @@ public class FileTransferService extends Service {
             transferServer.startSending();
             Log.i(TAG, "Sender: handshaked + files queued → start sending");
         }
+    }
+
+    /**
+     * 逐檔完成回呼（由 TransferServer/TransferClient 在背景執行緒同步呼叫）——
+     * 一檔一次、不經會合併的 LiveData，因此歷史紀錄數量永遠正確。
+     */
+    private void onFileCompleted(String fileName, long sizeBytes, long avgSpeedBps, boolean success) {
+        if (role == null) return;
+        String direction = ROLE_SENDER.equals(role) ? "SEND" : "RECEIVE";
+        TransferRepository repo = TransferRepository.getInstance(this);
+        repo.insert(repo.buildRecord(direction, fileName, sizeBytes, success, avgSpeedBps, null));
     }
 
     // ══════════════════════════════════════════════════════════
@@ -262,9 +301,11 @@ public class FileTransferService extends Service {
                     stopSelf();
                     break;
                 case CANCELLED:
+                    updateNotification("已取消", 0);
+                    stopSelf();
+                    break;
                 case ERROR:
-                    updateNotification(
-                            progress.phase == TransferProgress.Phase.ERROR ? "傳輸失敗" : "已取消", 0);
+                    updateNotification("傳輸失敗", 0);
                     stopSelf();
                     break;
                 default:

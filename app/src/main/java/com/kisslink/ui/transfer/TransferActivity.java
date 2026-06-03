@@ -19,6 +19,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.snackbar.Snackbar;
 import com.kisslink.R;
+import com.kisslink.transfer.SessionState;
 import com.kisslink.transfer.TransferProgress;
 
 import java.util.ArrayList;
@@ -108,7 +109,7 @@ public class TransferActivity extends AppCompatActivity {
         setupRoleUi();
 
         viewModel = new ViewModelProvider(this).get(TransferViewModel.class);
-        viewModel.getProgress().observe(this, this::onProgress);
+        viewModel.getState().observe(this, this::onSession);
     }
 
     @Override
@@ -185,10 +186,13 @@ public class TransferActivity extends AppCompatActivity {
     //  進度回呼
     // ══════════════════════════════════════════════════════════
 
-    private void onProgress(TransferProgress p) {
-        switch (p.phase) {
+    private void onSession(SessionState st) {
+        switch (st.phase) {
 
-            case WAITING:
+            case IDLE:
+            case CREATING_GROUP:
+            case HOSTING:
+            case CONNECTING:
                 tvPhase.setText("等待連線…");
                 break;
 
@@ -203,7 +207,9 @@ public class TransferActivity extends AppCompatActivity {
                 }
                 break;
 
-            case TRANSFERRING:
+            case TRANSFERRING: {
+                TransferProgress p = st.progress;
+                if (p == null) break;
                 tvPhase.setText("傳輸中 (" + (p.fileIndex + 1) + "/" + p.fileCount + ")");
                 tvFileName.setText(p.fileName);
                 tvFileName.setVisibility(View.VISIBLE);
@@ -213,27 +219,34 @@ public class TransferActivity extends AppCompatActivity {
                 progressBar.setProgress(pct >= 0 ? pct : 0);
                 tvPercent.setText(pct >= 0 ? pct + "%" : "—");
                 break;
+            }
 
-            case FILE_DONE:
-                tvPhase.setText("「" + p.fileName + "」完成");
+            case FILE_DONE: {
+                TransferProgress p = st.progress;
+                tvPhase.setText("「" + (p != null ? p.fileName : "") + "」完成");
                 progressBar.setProgress(100);
                 break;
+            }
 
-            case ALL_DONE:
-                tvPhase.setText("全部完成（" + p.fileCount + " 個檔案）");
+            case ALL_DONE: {
+                TransferProgress p = st.progress;
+                tvPhase.setText("全部完成（" + (p != null ? p.fileCount : 0) + " 個檔案）");
                 progressBar.setProgress(100);
                 tvSpeed.setText("");
                 tvEta.setText("");
                 Snackbar.make(progressBar, "傳輸完成！", Snackbar.LENGTH_LONG).show();
                 break;
+            }
 
             case CANCELLED:
                 tvPhase.setText("已取消");
                 break;
 
             case ERROR:
-                tvPhase.setText("錯誤：" + p.errorMessage);
-                Snackbar.make(progressBar, p.errorMessage, Snackbar.LENGTH_LONG).show();
+                tvPhase.setText("錯誤：" + (st.error != null ? st.error : ""));
+                if (st.error != null) {
+                    Snackbar.make(progressBar, st.error, Snackbar.LENGTH_LONG).show();
+                }
                 break;
         }
     }

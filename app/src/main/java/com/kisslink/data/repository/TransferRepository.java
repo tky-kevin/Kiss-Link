@@ -20,7 +20,7 @@ import java.util.concurrent.Executors;
  */
 public class TransferRepository {
 
-    private static TransferRepository instance;
+    private static volatile TransferRepository instance;
 
     private final TransferDao dao;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();

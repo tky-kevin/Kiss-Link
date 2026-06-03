@@ -51,6 +51,18 @@ public class TransferClient {
     private DataInputStream  in;
     private volatile boolean cancelled = false;
 
+    private volatile TransferEventListener eventListener;
+    // 進行中的檔案（供失敗時回報）
+    private String curName; private long curSize;
+
+    /** 設定逐檔完成回呼（用於可靠的歷史紀錄，不經會合併的 LiveData）。 */
+    public void setEventListener(TransferEventListener l) { this.eventListener = l; }
+
+    private void fireFileCompleted(String name, long size, long speed, boolean success) {
+        TransferEventListener l = eventListener;
+        if (l != null && name != null) l.onFileCompleted(name, size, speed, success);
+    }
+
     private final MutableLiveData<TransferProgress> progressLd =
             new MutableLiveData<>(TransferProgress.waiting());
 
@@ -145,6 +157,7 @@ public class TransferClient {
         } catch (IOException | TransferProtocol.InvalidPacketException e) {
             if (!cancelled) {
                 Log.e(TAG, "Receive error", e);
+                fireFileCompleted(curName, curSize, 0, false); // 進行中的檔案記為失敗
                 postProgress(TransferProgress.error("接收失敗：" + e.getMessage()));
             }
         } finally {
@@ -196,6 +209,7 @@ public class TransferClient {
             mime      = json.optString("mime", "application/octet-stream");
         } catch (Exception e) { throw new IOException("JSON parse error", e); }
 
+        curName = fileName; curSize = totalSize; // 標記進行中（供失敗回報）
         Log.d(TAG, "Receiving: " + fileName + " (" + totalSize + " bytes)");
 
         // 2. 回覆 READY_ACK
@@ -248,6 +262,11 @@ public class TransferClient {
 
         // 全部資料寫入完成後才清除 IS_PENDING，避免其他 app 讀到不完整的檔案
         finalizePendingUri(cr, outputUri);
+
+        long elapsed = System.currentTimeMillis() - startMs;
+        long avgSpeed = elapsed > 0 ? doneBytes * 1000 / elapsed : 0;
+        fireFileCompleted(fileName, totalSize, avgSpeed, true); // 可靠的逐檔成功回報
+        curName = null;
 
         postProgress(new TransferProgress.Builder()
                 .phase(TransferProgress.Phase.FILE_DONE)

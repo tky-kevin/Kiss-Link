@@ -522,13 +522,17 @@ public class WifiDirectManager implements WifiDirectEventCallback {
             if (info != null && info.groupFormed) {
                 onConnectionInfoAvailable(info);
             } else {
-                // 只有在非連線中的狀態下收到 groupFormed=false，才視為斷線。
-                // 避免在連線過程中收到暫時性的 false 而中斷。
+                // 只有在「穩定後」收到 groupFormed=false 才視為斷線。
+                // 連線/建群/等待對方(HOSTING)階段都可能收到暫時性的 false：
+                //  - GO 剛進入 HOSTING、群組仍在成形時，系統會送出 groupFormed=false 的暫時廣播，
+                //    若據此轉 DISCONNECTED 會讓 UI 誤報「連線失敗」並停掉 GO poll。
                 ConnectionState cs = stateLd.getValue();
-                if (cs != ConnectionState.CONNECTING && cs != ConnectionState.CREATING_GROUP) {
-                    onDisconnected();
-                } else {
+                if (cs == ConnectionState.CONNECTING
+                        || cs == ConnectionState.CREATING_GROUP
+                        || cs == ConnectionState.HOSTING) {
                     Log.d(TAG, "onConnectionChanged: groupFormed=false ignored while state=" + cs);
+                } else {
+                    onDisconnected();
                 }
             }
         });

@@ -8,7 +8,6 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
-import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 
@@ -21,8 +20,8 @@ import com.kisslink.R;
 import com.kisslink.model.GroupCredential;
 import com.kisslink.nfc.NFCManager;
 import com.kisslink.transfer.FileTransferService;
+import com.kisslink.transfer.SessionState;
 import com.kisslink.ui.transfer.TransferActivity;
-import com.kisslink.wifidirect.ConnectionState;
 
 import java.util.ArrayList;
 
@@ -49,7 +48,6 @@ public class PairingActivity extends AppCompatActivity {
     // ── Views ─────────────────────────────────────────────────
     private TextView tvRole, tvStatus, tvHint;
     private Button   btnCancel;
-    private View     nfcAnimView;
 
     // ── NFC & Service ─────────────────────────────────────────
     private NFCManager nfcManager;
@@ -87,12 +85,11 @@ public class PairingActivity extends AppCompatActivity {
             binder = (FileTransferService.TransferBinder) service;
             bound = true;
 
-            binder.getConnectionState().observe(PairingActivity.this, state -> {
-                updateStatusText(state);
-                if (state == ConnectionState.CONNECTED) goToTransfer();
-            });
-            binder.getConnectionError().observe(PairingActivity.this, err -> {
-                if (err != null && !err.isEmpty()) showError(err);
+            binder.getSessionState().observe(PairingActivity.this, st -> {
+                updateStatusText(st);
+                // 連線成功（或已直接進入傳輸階段）→ 跳轉傳輸畫面
+                if (st.isTransferStartedOrConnected()) goToTransfer();
+                else if (st.isError() && st.error != null) showError(st.error);
             });
 
             // 若 NFC 在綁定前就讀到憑證，補送一次
@@ -213,7 +210,6 @@ public class PairingActivity extends AppCompatActivity {
         tvStatus    = findViewById(R.id.tvStatus);
         tvHint      = findViewById(R.id.tvHint);
         btnCancel   = findViewById(R.id.btnCancel);
-        nfcAnimView = findViewById(R.id.nfcAnimView);
     }
 
     private void setupUiForRole(Role role) {
@@ -233,8 +229,8 @@ public class PairingActivity extends AppCompatActivity {
         }
     }
 
-    private void updateStatusText(ConnectionState state) {
-        switch (state) {
+    private void updateStatusText(SessionState st) {
+        switch (st.phase) {
             case CREATING_GROUP: tvStatus.setText("建立 Wi-Fi Direct 群組…");  break;
             case HOSTING:        tvStatus.setText("等待對方碰觸 NFC…");          break;
             case CONNECTING:     tvStatus.setText("靜默連線中，請稍候…");         break;
