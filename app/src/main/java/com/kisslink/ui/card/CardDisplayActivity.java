@@ -32,6 +32,12 @@ public class CardDisplayActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         ThemeManager.apply(this);
         super.onCreate(savedInstanceState);
+        // 設定視窗為透明 overlay，呈現懸浮感
+        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        android.view.WindowManager.LayoutParams lp = getWindow().getAttributes();
+        lp.dimAmount = 0.75f;
+        getWindow().setAttributes(lp);
         setContentView(R.layout.activity_card_display);
 
         BusinessCard card = getIntent().getParcelableExtra(EXTRA_CARD);
@@ -141,9 +147,9 @@ public class CardDisplayActivity extends AppCompatActivity {
         putIfNotEmpty(intent, ContactsContract.Intents.Insert.NAME,  card.getName());
         putIfNotEmpty(intent, ContactsContract.Intents.Insert.NOTES, buildNotes(card));
 
-        if (intent.resolveActivity(getPackageManager()) != null) {
+        try {
             startActivity(intent);
-        } else {
+        } catch (android.content.ActivityNotFoundException e) {
             Toast.makeText(this, getString(R.string.no_contacts_app), Toast.LENGTH_SHORT).show();
         }
     }

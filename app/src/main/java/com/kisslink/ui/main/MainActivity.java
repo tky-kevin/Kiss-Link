@@ -18,8 +18,10 @@ import com.google.android.material.imageview.ShapeableImageView;
 import com.kisslink.R;
 import com.kisslink.data.repository.UserProfileRepository;
 import com.kisslink.model.UserProfile;
+import com.kisslink.nfc.KissLinkHCEService;
 import com.kisslink.transfer.FileTransferService;
 import com.kisslink.ui.ThemeManager;
+import com.kisslink.ui.card.CardOverlayFragment;
 import com.kisslink.ui.settings.SettingsActivity;
 import com.kisslink.ui.transfer.TransferBottomSheet;
 import com.kisslink.util.PermissionHelper;
@@ -66,13 +68,14 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout btnHistory  = findViewById(R.id.btnHistory);
         LinearLayout btnProfile  = findViewById(R.id.btnProfile);
 
+        LinearLayout headerCard = findViewById(R.id.headerCard);
+
         cardSend.setOnClickListener(v    -> startSend());
         cardReceive.setOnClickListener(v -> startReceive());
         btnHistory.setOnClickListener(v  -> startActivity(new Intent(this, HistoryActivity.class)));
         btnProfile.setOnClickListener(v  -> startActivity(new Intent(this, SettingsActivity.class)));
 
-        ivProfileAvatar.setOnClickListener(v ->
-                startActivity(new Intent(this, SettingsActivity.class)));
+        headerCard.setOnClickListener(v -> showCardOverlay());
 
         if (!PermissionHelper.hasPermissions(this)) {
             PermissionHelper.requestPermissions(this);
@@ -83,6 +86,13 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         refreshProfile();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        KissLinkHCEService.clearCredential();
+        KissLinkHCEService.clearOnCardDeliveredCallback();
     }
 
     @Override
@@ -123,5 +133,9 @@ public class MainActivity extends AppCompatActivity {
         }
         TransferBottomSheet.newInstance(FileTransferService.ROLE_RECEIVER, null)
                 .show(getSupportFragmentManager(), "transfer");
+    }
+
+    private void showCardOverlay() {
+        new CardOverlayFragment().show(getSupportFragmentManager(), "card_overlay");
     }
 }

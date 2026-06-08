@@ -7,8 +7,9 @@
     android:orientation="vertical"
     android:background="@color/notion_bg">
 
-    <!-- 頂部：頭像 + 歡迎文字 -->
+    <!-- 頂部：頭像 + 歡迎文字（點擊顯示名片 overlay） -->
     <LinearLayout
+        android:id="@+id/headerCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
@@ -16,7 +17,10 @@
         android:paddingStart="24dp"
         android:paddingEnd="24dp"
         android:paddingTop="52dp"
-        android:paddingBottom="28dp">
+        android:paddingBottom="28dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?attr/selectableItemBackground">
 
         <com.google.android.material.imageview.ShapeableImageView
             android:id="@+id/ivProfileAvatar"
@@ -38,9 +42,9 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="歡迎回來"
-                android:textSize="14sp"
-                android:textColor="@color/notion_text_tertiary"/>
+                android:text="名片 · 點擊查看"
+                android:textSize="12sp"
+                android:textColor="?attr/colorPrimary"/>
 
             <TextView
                 android:id="@+id/tvProfileName"

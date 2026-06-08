@@ -13,6 +13,20 @@ public class KissLinkHCEService extends HostApduService {
 
     private static volatile byte[] pendingCredentialBytes = null;
 
+    // 追蹤是否送出了 APDU 回應（用於區分「真的讀到了」vs「靠近但未讀」）
+    private volatile boolean apduResponseSent = false;
+
+    // 名片送達回調（由 CardOverlayFragment 設定，主執行緒呼叫）
+    private static volatile Runnable onCardDeliveredCallback = null;
+
+    public static void setOnCardDeliveredCallback(Runnable callback) {
+        onCardDeliveredCallback = callback;
+    }
+
+    public static void clearOnCardDeliveredCallback() {
+        onCardDeliveredCallback = null;
+    }
+
     // ══════════════════════════════════════════════════════════
     //  靜態 API
     // ══════════════════════════════════════════════════════════
@@ -56,6 +70,7 @@ public class KissLinkHCEService extends HostApduService {
 
         byte[] response = APDUHelper.buildOkResponse(payload);
         Log.i(TAG, "Responding with payload (" + payload.length + " bytes)");
+        apduResponseSent = true; // 標記 payload 已送出
         return response;
     }
 
@@ -63,6 +78,14 @@ public class KissLinkHCEService extends HostApduService {
     public void onDeactivated(int reason) {
         String reasonStr = (reason == DEACTIVATION_LINK_LOSS) ? "LINK_LOSS" : "DESELECTED";
         Log.d(TAG, "HCE deactivated: " + reasonStr);
+        if (apduResponseSent) {
+            apduResponseSent = false;
+            Runnable cb = onCardDeliveredCallback;
+            onCardDeliveredCallback = null; // 防止重複觸發
+            if (cb != null) {
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(cb);
+            }
+        }
     }
 
     // ══════════════════════════════════════════════════════════
