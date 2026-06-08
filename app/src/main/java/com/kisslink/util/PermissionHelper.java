@@ -42,6 +42,13 @@ public class PermissionHelper {
             permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE);
         }
 
+        // API 31+：BLE 憑證側通道需要的新版藍牙執行期權限
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissions.add(Manifest.permission.BLUETOOTH_ADVERTISE);
+            permissions.add(Manifest.permission.BLUETOOTH_CONNECT);
+            permissions.add(Manifest.permission.BLUETOOTH_SCAN);
+        }
+
         // 前景服務 (API 28+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             permissions.add(Manifest.permission.FOREGROUND_SERVICE);

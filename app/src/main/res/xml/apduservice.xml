@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    KissLink HCE AID 宣告。
-    AID F04B495353 = F0 (私有前綴) + "KISS" ASCII
+    KissLink HCE：模擬 NFC Forum Type-4 標籤。
+    AID D2760000850101 = 標準「NDEF Tag Application」AID。
+    註冊此 AID 後，對方手機(即使未開 App)的 OS 預設 NFC dispatch 會讀到我們吐出的
+    NDEF(deep link kisslink://pair + token)並啟動 App。
     category="other" 表示非支付用途，不與系統錢包衝突。
 -->
 <host-apdu-service
@@ -13,7 +15,7 @@
         android:category="other"
         android:description="@string/app_name">
 
-        <aid-filter android:name="F04B495353"/>
+        <aid-filter android:name="D2760000850101"/>
 
     </aid-group>
 

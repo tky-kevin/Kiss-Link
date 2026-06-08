@@ -17,8 +17,11 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.kisslink.R;
+import com.kisslink.pairing.PairingToken;
 import com.kisslink.ui.pairing.PairingActivity;
 import com.kisslink.util.PermissionHelper;
+
+import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -100,6 +103,30 @@ public class MainActivity extends AppCompatActivity {
         // 啟動時請求權限
         if (!PermissionHelper.hasPermissions(this)) {
             PermissionHelper.requestPermissions(this);
+        }
+
+        // 碰觸冷啟動：對方 HCE 的 kisslink://pair deep link 啟動本 App
+        handlePairingDeepLink(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handlePairingDeepLink(intent);
+    }
+
+    /**
+     * 解析碰觸帶來的 {@link PairingToken}。
+     * Stage 1 僅解析並記錄；Stage 4 會把它交給配對協調器以 client/reader 身分接手連線。
+     */
+    private void handlePairingDeepLink(Intent intent) {
+        if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction())) return;
+        Uri data = intent.getData();
+        PairingToken token = PairingToken.fromUri(data);
+        if (token != null) {
+            Log.i("MainActivity", "Pairing deep link received: " + token);
+            // TODO(Stage 4): 交給 PairingCoordinator 以 client 身分接手
         }
     }
 

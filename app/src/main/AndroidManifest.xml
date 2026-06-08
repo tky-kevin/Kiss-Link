@@ -25,6 +25,20 @@
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="tiramisu"/>
 
+    <!-- BLE 憑證側通道（碰觸配對後傳遞 Wi-Fi Direct 憑證）-->
+    <!-- API ≤30：傳統藍牙權限（normal，非執行期）-->
+    <uses-permission android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30"/>
+    <!-- API 31+：新版藍牙執行期權限 -->
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s"/>
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="true"/>
+
     <!-- 前景 Service（傳輸通知）-->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
@@ -49,10 +63,18 @@
         <!-- ── 主畫面 ────────────────────────────────────────── -->
         <activity
             android:name=".ui.main.MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <!-- 碰觸冷啟動：對方 HCE 吐出的 kisslink://pair deep link 啟動本 App -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="kisslink" android:host="pair"/>
             </intent-filter>
         </activity>
 
