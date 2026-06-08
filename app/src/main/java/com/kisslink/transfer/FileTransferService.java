@@ -60,6 +60,8 @@ public class FileTransferService extends Service {
     @Nullable private PeerConnection peer;
     private boolean isGroupOwner = false;
     private volatile boolean peerStarting = false;
+    /** session 世代:每次重置 +1。舊 Coordinator 的回呼以世代不符被忽略,杜絕「殘留場以錯誤角色觸發 onPaired → GO 連到自己」。 */
+    private int sessionGen = 0;
 
     @Nullable private LiveData<TransferProgress> peerProgressSrc;
     @Nullable private Observer<TransferProgress> peerProgressObs;
@@ -148,16 +150,20 @@ public class FileTransferService extends Service {
     // ══════════════════════════════════════════════════════════
 
     private void createCoordinator() {
+        final int gen = ++sessionGen;
         coordinator = new PairingCoordinator(this, wifi, new PairingCoordinator.Listener() {
             @Override public void onPhase(@NonNull PairingCoordinator.Phase phase) {
+                if (gen != sessionGen) return;
                 sessionLd.postValue(mapPhase(phase));
             }
             @Override public void onPaired(boolean groupOwner) {
+                if (gen != sessionGen) return; // 殘留場 → 忽略,避免錯誤角色 establishPeer
                 isGroupOwner = groupOwner;
                 sessionLd.postValue(SessionState.of(SessionState.Phase.CONNECTING));
                 establishPeer(groupOwner);
             }
             @Override public void onError(@NonNull String message) {
+                if (gen != sessionGen) return;
                 sessionLd.postValue(SessionState.error(message));
             }
         });
