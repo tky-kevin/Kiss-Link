@@ -109,10 +109,17 @@ public class FileTransferService extends Service {
         public void rePair() { resetForNewSession(); }
 
         /**
-         * 進入配對畫面時呼叫:若上一場已結束(已連線/失敗),重置出一個全新的 Coordinator,
-         * 否則沿用。解決「配對成功後 Coordinator.finished=true,再次觸碰被忽略」的重連失敗。
+         * 進入配對畫面時呼叫,決定是否要重開一場新配對。
+         * <ul>
+         *   <li><b>連線仍存活(peer != null)</b>:不動它。SessionState 仍是 CONNECTED,
+         *       配對畫面的觀察者會直接把使用者帶回傳輸畫面(等於「繼續傳輸」)——
+         *       避免「點碰一下配對就把活著的連線拆掉」。</li>
+         *   <li>連線已死(peer == null)且上一場 Coordinator 已結束/不存在:
+         *       重置出全新 Coordinator,讓再次觸碰能重連(否則被 finished 旗標忽略)。</li>
+         * </ul>
          */
         public void ensureFreshSession() {
+            if (peer != null) return; // 連線存活中 → 保留
             if (coordinator == null || coordinator.isFinished()) resetForNewSession();
         }
 

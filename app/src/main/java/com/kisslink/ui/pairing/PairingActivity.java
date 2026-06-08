@@ -189,7 +189,7 @@ public class PairingActivity extends AppCompatActivity {
     }
 
     private void enableNfcIfReady() {
-        if (coldLaunchPeer != null) return;
+        if (navigating || coldLaunchPeer != null) return;
         if (!bound || binder == null || !resumed) return;
         ensureController();
         nfc.setLocalToken(binder.localToken());
