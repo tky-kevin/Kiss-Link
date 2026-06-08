@@ -18,9 +18,10 @@ import com.google.android.material.imageview.ShapeableImageView;
 import com.kisslink.R;
 import com.kisslink.data.repository.UserProfileRepository;
 import com.kisslink.model.UserProfile;
+import com.kisslink.transfer.FileTransferService;
 import com.kisslink.ui.ThemeManager;
-import com.kisslink.ui.pairing.PairingActivity;
 import com.kisslink.ui.settings.SettingsActivity;
+import com.kisslink.ui.transfer.TransferBottomSheet;
 import com.kisslink.util.PermissionHelper;
 
 import java.util.ArrayList;
@@ -45,8 +46,8 @@ public class MainActivity extends AppCompatActivity {
                             } catch (SecurityException ignored) {}
                             selected.add(uri);
                         }
-                        startActivity(
-                                PairingActivity.newIntent(this, PairingActivity.Role.SENDER, selected));
+                        TransferBottomSheet.newInstance(FileTransferService.ROLE_SENDER, selected)
+                                .show(getSupportFragmentManager(), "transfer");
                     });
 
     @Override
@@ -120,6 +121,7 @@ public class MainActivity extends AppCompatActivity {
             PermissionHelper.requestPermissions(this);
             return;
         }
-        startActivity(PairingActivity.newIntent(this, PairingActivity.Role.RECEIVER, null));
+        TransferBottomSheet.newInstance(FileTransferService.ROLE_RECEIVER, null)
+                .show(getSupportFragmentManager(), "transfer");
     }
 }
