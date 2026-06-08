@@ -49,7 +49,6 @@ public class PairingActivity extends AppCompatActivity {
     private boolean bound = false;
     private boolean navigating = false;
     private boolean resumed = false;
-    private boolean togglingStarted = false;
 
     // ── Factory ────────────────────────────────────────────────
 
@@ -89,14 +88,19 @@ public class PairingActivity extends AppCompatActivity {
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
-        startTogglingIfReady();
+        enableNfcIfReady();
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (nfc != null) nfc.handleIntent(intent);
     }
 
     @Override protected void onPause() {
         super.onPause();
         resumed = false;
-        if (nfc != null) nfc.stop();
-        togglingStarted = false;
+        if (nfc != null) nfc.disable();
     }
 
     @Override protected void onDestroy() {
@@ -123,7 +127,7 @@ public class PairingActivity extends AppCompatActivity {
                 tvStatus.setText("連線中…");
                 binder.onNfcLatchedAsReader(coldLaunchPeer);
             } else {
-                startTogglingIfReady();
+                enableNfcIfReady();
             }
         }
         @Override public void onServiceDisconnected(ComponentName name) {
@@ -133,26 +137,28 @@ public class PairingActivity extends AppCompatActivity {
 
     // ── NFC 切換 ────────────────────────────────────────────────
 
-    private void startTogglingIfReady() {
-        if (togglingStarted || coldLaunchPeer != null) return;
-        if (!bound || binder == null || !resumed) return;
+    private void ensureController() {
+        if (nfc != null) return;
+        nfc = new NfcPairingController(this, new NfcPairingController.Callback() {
+            @Override public void onPeerToken(PairingToken peer) {
+                tvStatus.setText("已碰到,連線中…");
+                if (binder != null) binder.onNfcLatchedAsReader(peer);
+            }
+            @Override public void onTagRead() {
+                tvStatus.setText("已碰到,連線中…");
+                if (binder != null) binder.onNfcLatchedAsTag();
+            }
+            @Override public void onError(String message) { showError(message); }
+        });
+    }
 
-        if (nfc == null) {
-            nfc = new NfcPairingController(this, new NfcPairingController.Callback() {
-                @Override public void onPeerToken(PairingToken peer) {
-                    tvStatus.setText("已碰到,連線中…");
-                    if (binder != null) binder.onNfcLatchedAsReader(peer);
-                }
-                @Override public void onTagRead() {
-                    tvStatus.setText("已碰到,連線中…");
-                    if (binder != null) binder.onNfcLatchedAsTag();
-                }
-                @Override public void onError(String message) { showError(message); }
-            });
-        }
+    private void enableNfcIfReady() {
+        if (coldLaunchPeer != null) return;
+        if (!bound || binder == null || !resumed) return;
+        ensureController();
         nfc.setLocalToken(binder.localToken());
-        nfc.start();
-        togglingStarted = true;
+        nfc.enable();
+        nfc.handleIntent(getIntent());
         tvStatus.setText("等待碰觸…");
     }
 

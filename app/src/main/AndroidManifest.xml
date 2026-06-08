@@ -80,7 +80,8 @@
 
         <!-- ── 配對畫面 ──────────────────────────────────────── -->
         <activity android:name=".ui.pairing.PairingActivity"
-            android:exported="false"/>
+            android:exported="false"
+            android:launchMode="singleTop"/>
 
         <!-- ── 傳輸畫面 ──────────────────────────────────────── -->
         <activity android:name=".ui.transfer.TransferActivity"
