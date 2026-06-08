@@ -69,6 +69,13 @@ public final class TransferProtocol {
     public static final byte TYPE_COMPLETE_ACK  = 0x08;
     public static final byte TYPE_CANCEL        = 0x09;
     public static final byte TYPE_ERROR         = 0x0A;
+    /** peer 雙向模型的開場握手(連上後雙方各送一次)。 */
+    public static final byte TYPE_HELLO         = 0x0B;
+
+    // ── Item Types（雙向 peer：一條 socket 可送多種內容）─────────
+    public static final byte ITEM_FILE  = 0;
+    public static final byte ITEM_VCARD = 1; // 名片（vCard）
+    public static final byte ITEM_PHOTO = 2;
 
     // ══════════════════════════════════════════════════════════
     //  Header POJO
@@ -85,6 +92,7 @@ public final class TransferProtocol {
         public int   chunkLen;
         public short metaLen;
         public int   crc32;
+        public byte  itemType;   // 見 ITEM_* 常數（僅 FILE_META 有意義）
     }
 
     // ══════════════════════════════════════════════════════════
@@ -103,7 +111,8 @@ public final class TransferProtocol {
         buf.putInt(h.chunkLen);
         buf.putShort(h.metaLen);
         buf.putInt(h.crc32);
-        // remaining 26 bytes stay 0
+        buf.put(h.itemType);
+        // remaining 25 bytes stay 0
         return buf.array();
     }
 
@@ -122,6 +131,7 @@ public final class TransferProtocol {
         h.chunkLen  = buf.getInt();
         h.metaLen   = buf.getShort();
         h.crc32     = buf.getInt();
+        h.itemType  = buf.get();
         if (h.magic != MAGIC)
             throw new InvalidPacketException("Bad magic: 0x" + Integer.toHexString(h.magic));
         return h;
@@ -141,6 +151,17 @@ public final class TransferProtocol {
         Header h = new Header();
         h.type = TYPE_FILE_META;
         h.fileId = fileId; h.fileCount = (short) fileCount;
+        h.totalSize = totalSize; h.metaLen = (short) metaLen;
+        return h;
+    }
+    public static Header makeHello() {
+        Header h = new Header(); h.type = TYPE_HELLO; return h;
+    }
+    /** 雙向 peer 的項目 meta：帶 itemType。 */
+    public static Header makeItemMeta(int itemId, byte itemType, long totalSize, int metaLen) {
+        Header h = new Header();
+        h.type = TYPE_FILE_META;
+        h.fileId = itemId; h.itemType = itemType;
         h.totalSize = totalSize; h.metaLen = (short) metaLen;
         return h;
     }
