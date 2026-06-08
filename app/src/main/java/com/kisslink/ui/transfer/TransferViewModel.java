@@ -103,11 +103,6 @@ public class TransferViewModel extends AndroidViewModel {
         if (serviceBinder != null) serviceBinder.cancel();
     }
 
-    /** 斷開現有連線並重置以配對新裝置。 */
-    public void rePair() {
-        if (serviceBinder != null) serviceBinder.rePair();
-    }
-
     // ── LiveData ──────────────────────────────────────────────
 
     public LiveData<SessionState> getState() { return stateLd; }

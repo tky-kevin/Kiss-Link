@@ -46,7 +46,6 @@ public class TransferActivity extends AppCompatActivity {
     private NfcForegroundHelper nfcHelper;
 
     private TransferViewModel viewModel;
-    private PairingToken pendingPeerForRePair = null;
 
     private final ActivityResultLauncher<String[]> filePicker =
             registerForActivityResult(new ActivityResultContracts.OpenMultipleDocuments(), uris -> {
@@ -91,38 +90,27 @@ public class TransferActivity extends AppCompatActivity {
         viewModel = new ViewModelProvider(this).get(TransferViewModel.class);
         viewModel.getState().observe(this, this::onSession);
 
+        // 傳輸中不打擾;否則(已斷線/閒置)觸碰 → 轉到配對畫面。是否重置由 Service 在 latch 當下決定:
+        // 連線存活 → 配對畫面會直接帶回此畫面;已死 → latch 時重置成新場重連。
         nfcHelper = new NfcForegroundHelper(this, new NfcForegroundHelper.Callback() {
             @Override public void onPeerToken(@NonNull PairingToken peer) {
-                Log.i("TransferActivity", "NFC tap during transfer → new device: " + peer);
-                SessionState st = viewModel.getState().getValue();
-                if (st != null && st.phase == SessionState.Phase.TRANSFERRING) {
-                    pendingPeerForRePair = peer;
-                    android.widget.Toast.makeText(TransferActivity.this, "傳輸中，將於目前進度完成後自動切換裝置", android.widget.Toast.LENGTH_LONG).show();
-                } else {
-                    doRePair(peer);
-                }
+                if (isTransferring()) return;
+                startActivity(PairingActivity.newIntentForColdLaunch(TransferActivity.this, peer));
+                finish();
             }
             @Override public void onTagRead() {
-                Log.i("TransferActivity", "NFC tag read during transfer");
-                SessionState st = viewModel.getState().getValue();
-                if (st != null && st.phase == SessionState.Phase.TRANSFERRING) {
-                    // Cannot wait if we don't have the peer token, so just show a toast
-                    android.widget.Toast.makeText(TransferActivity.this, "傳輸中，無法切換裝置", android.widget.Toast.LENGTH_LONG).show();
-                } else {
-                    viewModel.rePair();
-                    Intent intent = new Intent(TransferActivity.this, PairingActivity.class);
-                    intent.putExtra("from_nfc_tag", true);
-                    startActivity(intent);
-                    finish();
-                }
+                if (isTransferring()) return;
+                Intent intent = new Intent(TransferActivity.this, PairingActivity.class);
+                intent.putExtra("from_nfc_tag", true);
+                startActivity(intent);
+                finish();
             }
         });
     }
 
-    private void doRePair(PairingToken peer) {
-        viewModel.rePair();
-        startActivity(PairingActivity.newIntentForColdLaunch(this, peer));
-        finish();
+    private boolean isTransferring() {
+        SessionState st = viewModel.getState().getValue();
+        return st != null && st.phase == SessionState.Phase.TRANSFERRING;
     }
 
     @Override protected void onStart() { super.onStart(); viewModel.bindService(this); }
@@ -148,13 +136,6 @@ public class TransferActivity extends AppCompatActivity {
     }
 
     private void onSession(SessionState st) {
-        if (pendingPeerForRePair != null && st.phase != SessionState.Phase.TRANSFERRING) {
-            PairingToken p = pendingPeerForRePair;
-            pendingPeerForRePair = null;
-            doRePair(p);
-            return;
-        }
-
         switch (st.phase) {
             case PAIRING_LATCHED:
             case PAIRING_LINKING:

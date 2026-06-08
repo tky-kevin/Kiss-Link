@@ -124,10 +124,8 @@ public class PairingActivity extends AppCompatActivity {
             binder = (FileTransferService.TransferBinder) service;
             bound = true;
 
-            // 進入配對畫面=要開新一場。若上一場已結束(已連線/失敗),重置出全新 Coordinator,
-            // 否則再次觸碰會被舊 Coordinator 的 finished 旗標忽略(重連失敗)。
-            binder.ensureFreshSession();
-
+            // 不在此重置 session。是否重置集中到 NFC latch 當下(Service.prepareForLatch):
+            // 連線存活 → 觀察者下面會直接帶回傳輸畫面;已死 → latch 時才重置出新場。
             binder.getSessionState().observe(PairingActivity.this, st -> {
                 updateStatus(st);
                 if (st.isTransferStartedOrConnected()) goToTransfer();
@@ -161,28 +159,12 @@ public class PairingActivity extends AppCompatActivity {
         if (nfc != null) return;
         nfc = new NfcPairingController(this, new NfcPairingController.Callback() {
             @Override public void onPeerToken(@NonNull PairingToken peer) {
-                if (binder != null) {
-                    SessionState st = binder.getSessionState().getValue();
-                    if (st != null && st.isError()) {
-                        Log.i("PairingActivity", "Session in error state, re-pairing as reader");
-                        nfc.resetLatched();
-                        binder.rePair();
-                    }
-                    tvStatus.setText("已碰到,連線中…");
-                    binder.onNfcLatchedAsReader(peer);
-                }
+                tvStatus.setText("已碰到,連線中…");
+                if (binder != null) binder.onNfcLatchedAsReader(peer);
             }
             @Override public void onTagRead() {
-                if (binder != null) {
-                    SessionState st = binder.getSessionState().getValue();
-                    if (st != null && st.isError()) {
-                        Log.i("PairingActivity", "Session in error state, re-pairing as tag");
-                        nfc.resetLatched();
-                        binder.rePair();
-                    }
-                    tvStatus.setText("已碰到,連線中…");
-                    binder.onNfcLatchedAsTag();
-                }
+                tvStatus.setText("已碰到,連線中…");
+                if (binder != null) binder.onNfcLatchedAsTag();
             }
             @Override public void onError(@NonNull String message) { showError(message); }
         });

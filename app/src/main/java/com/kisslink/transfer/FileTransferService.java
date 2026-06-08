@@ -91,36 +91,18 @@ public class FileTransferService extends Service {
 
         /** NFC：reader 相位讀到對方 token（本機當 BLE central）。 */
         public void onNfcLatchedAsReader(@NonNull PairingToken peerToken) {
-            coordinator.onLatchedAsReader(peerToken);
+            if (prepareForLatch()) coordinator.onLatchedAsReader(peerToken);
         }
 
         /** NFC：自己 HCE 被讀（本機當 BLE peripheral）。 */
         public void onNfcLatchedAsTag() {
-            coordinator.onLatchedAsTag();
+            if (prepareForLatch()) coordinator.onLatchedAsTag();
         }
 
         /** 連上後送出內容（任一端皆可、可多輪）。 */
         public void sendItems(@NonNull List<SendItem> items) {
             if (peer != null) peer.sendItems(items);
             else Log.w(TAG, "sendItems before connected");
-        }
-
-        /** 第三台：拆掉目前 session，重開一場新配對。 */
-        public void rePair() { resetForNewSession(); }
-
-        /**
-         * 進入配對畫面時呼叫,決定是否要重開一場新配對。
-         * <ul>
-         *   <li><b>連線仍存活(peer != null)</b>:不動它。SessionState 仍是 CONNECTED,
-         *       配對畫面的觀察者會直接把使用者帶回傳輸畫面(等於「繼續傳輸」)——
-         *       避免「點碰一下配對就把活著的連線拆掉」。</li>
-         *   <li>連線已死(peer == null)且上一場 Coordinator 已結束/不存在:
-         *       重置出全新 Coordinator,讓再次觸碰能重連(否則被 finished 旗標忽略)。</li>
-         * </ul>
-         */
-        public void ensureFreshSession() {
-            if (peer != null) return; // 連線存活中 → 保留
-            if (coordinator == null || coordinator.isFinished()) resetForNewSession();
         }
 
         public void cancel() {
@@ -193,6 +175,21 @@ public class FileTransferService extends Service {
         }
     }
 
+    /**
+     * NFC latch 進來時的單一決策點(集中所有「是否重置」邏輯,避免散落多處互相打架):
+     * <ul>
+     *   <li>連線存活中(peer != null)→ 回 false:不打擾,讓 UI 觀察者把使用者帶回傳輸畫面。</li>
+     *   <li>上一場已結束/不存在(coordinator finished/null)→ 重置出全新 Coordinator 再 latch。</li>
+     *   <li>正在配對中(coordinator 未 finished)→ 直接 latch;coordinator 自身的 finished/peerToken
+     *       旗標會擋掉重複,不會產生重疊的 coordinator。</li>
+     * </ul>
+     */
+    private boolean prepareForLatch() {
+        if (peer != null) return false;
+        if (coordinator == null || coordinator.isFinished()) resetForNewSession();
+        return true;
+    }
+
     /** 第三台重連 / 取消後重置:拆 peer、reset 協調器與 Wi-Fi、重開一場新配對。 */
     private void resetForNewSession() {
         teardownPeer();
@@ -226,7 +223,9 @@ public class FileTransferService extends Service {
 
     @Nullable
     private Socket acceptAsServer() {
-        try (ServerSocket ss = new ServerSocket(WifiDirectManager.TRANSFER_PORT)) {
+        try (ServerSocket ss = new ServerSocket()) {
+            ss.setReuseAddress(true); // 避免上一場 socket 殘留 TIME_WAIT → "Address already in use"
+            ss.bind(new InetSocketAddress(WifiDirectManager.TRANSFER_PORT));
             ss.setSoTimeout(20_000);
             Log.i(TAG, "GO: waiting for peer socket…");
             return ss.accept();
