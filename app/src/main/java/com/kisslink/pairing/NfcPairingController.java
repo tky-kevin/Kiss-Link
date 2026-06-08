@@ -2,10 +2,12 @@ package com.kisslink.pairing;
 
 import android.app.Activity;
 import android.app.PendingIntent;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.nfc.NdefMessage;
 import android.nfc.NfcAdapter;
 import android.nfc.Tag;
+import android.nfc.cardemulation.CardEmulation;
 import android.nfc.tech.Ndef;
 import android.os.Build;
 import android.os.Handler;
@@ -64,7 +66,7 @@ public class NfcPairingController {
 
     /** 設定本機這場要廣播的 token(常駐寫進 HCE)。 */
     public void setLocalToken(@NonNull PairingToken token) {
-        KissLinkHCEService.setActiveToken(token);
+        KissLinkHCEService.setActiveToken(token, activity.getPackageName());
     }
 
     // ══════════════════════════════════════════════════════════
@@ -93,16 +95,40 @@ public class NfcPairingController {
         } catch (Exception e) {
             Log.w(TAG, "enableForegroundDispatch failed: " + e.getMessage());
         }
+
+        // 設定 preferred HCE service，避免 Samsung ConflictResolverActivity
+        try {
+            CardEmulation ce = CardEmulation.getInstance(nfcAdapter);
+            if (ce != null) {
+                ce.setPreferredService(activity,
+                        new ComponentName(activity, KissLinkHCEService.class));
+                Log.d(TAG, "Preferred HCE service set");
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "setPreferredService failed: " + e.getMessage());
+        }
     }
 
     @MainThread
     public void disable() {
         KissLinkHCEService.setOnTagReadListener(null);
+        // 取消 preferred HCE service
+        try {
+            CardEmulation ce = CardEmulation.getInstance(nfcAdapter);
+            if (ce != null) ce.unsetPreferredService(activity);
+        } catch (Exception e) {
+            Log.w(TAG, "unsetPreferredService failed: " + e.getMessage());
+        }
         try {
             if (nfcAdapter != null) nfcAdapter.disableForegroundDispatch(activity);
         } catch (Exception e) {
             Log.w(TAG, "disableForegroundDispatch failed: " + e.getMessage());
         }
+    }
+
+    @MainThread
+    public void resetLatched() {
+        this.latched = false;
     }
 
     // ══════════════════════════════════════════════════════════

@@ -26,14 +26,26 @@ public final class BootstrapCodec {
 
     private BootstrapCodec() {}
 
-    /** 建立 HCE 對外吐出的 NDEF 訊息(URI + AAR)。 */
-    public static NdefMessage buildNdef(@NonNull PairingToken token) {
+    /** 建立 HCE 對外吐出的 NDEF 訊息（URI + AAR），AAR 使用指定 packageName。 */
+    public static NdefMessage buildNdef(@NonNull PairingToken token, @NonNull String packageName) {
         NdefRecord uri = NdefRecord.createUri(token.toUri());
-        NdefRecord aar = NdefRecord.createApplicationRecord(APP_PACKAGE);
+        NdefRecord aar = NdefRecord.createApplicationRecord(packageName);
         return new NdefMessage(new NdefRecord[]{ uri, aar });
     }
 
-    /** 取 NDEF 訊息的原始 bytes(供 Type-4 READ BINARY 回應)。 */
+    /** @deprecated 改用 {@link #buildNdef(PairingToken, String)}，傳入執行期 packageName。 */
+    @Deprecated
+    public static NdefMessage buildNdef(@NonNull PairingToken token) {
+        return buildNdef(token, APP_PACKAGE);
+    }
+
+    /** 取 NDEF 訊息的原始 bytes（供 Type-4 READ BINARY 回應），AAR 使用指定 packageName。 */
+    public static byte[] buildNdefBytes(@NonNull PairingToken token, @NonNull String packageName) {
+        return buildNdef(token, packageName).toByteArray();
+    }
+
+    /** @deprecated 改用 {@link #buildNdefBytes(PairingToken, String)}，傳入執行期 packageName。 */
+    @Deprecated
     public static byte[] buildNdefBytes(@NonNull PairingToken token) {
         return buildNdef(token).toByteArray();
     }

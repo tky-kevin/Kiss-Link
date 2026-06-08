@@ -78,15 +78,21 @@ public class KissLinkHCEService extends HostApduService {
     public interface OnTagReadListener { void onTagRead(); }
     @Nullable private static volatile OnTagReadListener readListener;
 
-    /** 設定本機這場配對要對外廣播的 token(切換控制器在進入 listen 相位前呼叫)。 */
-    public static void setActiveToken(PairingToken token) {
-        byte[] msg = BootstrapCodec.buildNdefBytes(token);
+    /** 設定本機這場配對要對外廣播的 token，AAR 使用指定 packageName。 */
+    public static void setActiveToken(PairingToken token, String packageName) {
+        byte[] msg = BootstrapCodec.buildNdefBytes(token, packageName);
         byte[] file = new byte[msg.length + 2];
         file[0] = (byte) ((msg.length >> 8) & 0xFF);
         file[1] = (byte) (msg.length & 0xFF);
         System.arraycopy(msg, 0, file, 2, msg.length);
         ndefFile = file;
         Log.d(TAG, "Active token set, NDEF file " + file.length + " bytes");
+    }
+
+    /** @deprecated 改用 {@link #setActiveToken(PairingToken, String)}。 */
+    @Deprecated
+    public static void setActiveToken(PairingToken token) {
+        setActiveToken(token, BootstrapCodec.APP_PACKAGE);
     }
 
     public static void clearToken() {

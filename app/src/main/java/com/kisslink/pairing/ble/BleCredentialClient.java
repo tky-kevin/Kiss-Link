@@ -60,10 +60,12 @@ public class BleCredentialClient {
     @Nullable private BluetoothGattCharacteristic credentialChar;
     @Nullable private BluetoothGattCharacteristic peerTokenChar;
     private boolean scanning = false;
+    private final Runnable timeoutRunnable;
 
     public BleCredentialClient(@NonNull Context context, @NonNull Callback callback) {
         this.context = context.getApplicationContext();
         this.callback = callback;
+        this.timeoutRunnable = () -> callback.onError("BLE 連線逾時，請重試");
     }
 
     @SuppressLint("MissingPermission")
@@ -87,6 +89,7 @@ public class BleCredentialClient {
         scanning = true;
         scanner.startScan(Collections.singletonList(filter), settings, scanCallback);
         Log.i(TAG, "Scanning for peer nonce…");
+        main.postDelayed(timeoutRunnable, 15000);
     }
 
     /** 本機當選 GO:把憑證 write 給 peripheral。 */
@@ -105,6 +108,7 @@ public class BleCredentialClient {
 
     @SuppressLint("MissingPermission")
     public void stop() {
+        main.removeCallbacks(timeoutRunnable);
         try { if (scanning && scanner != null) scanner.stopScan(scanCallback); } catch (Exception ignored) {}
         try { if (gatt != null) { gatt.disconnect(); gatt.close(); } } catch (Exception ignored) {}
         scanning = false;

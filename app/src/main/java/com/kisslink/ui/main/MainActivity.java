@@ -9,6 +9,8 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
 
+import com.kisslink.nfc.NfcForegroundHelper;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
@@ -36,6 +38,7 @@ public class MainActivity extends AppCompatActivity {
 
     private MainViewModel  viewModel;
     private HistoryAdapter historyAdapter;
+    private NfcForegroundHelper nfcHelper;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -61,6 +64,34 @@ public class MainActivity extends AppCompatActivity {
         }
 
         handlePairingDeepLink(getIntent());
+
+        nfcHelper = new NfcForegroundHelper(this, new NfcForegroundHelper.Callback() {
+            @Override public void onPeerToken(@NonNull PairingToken peer) {
+                Log.i("MainActivity", "NFC tap on main screen → start pairing as reader: " + peer);
+                startActivity(PairingActivity.newIntentForColdLaunch(MainActivity.this, peer));
+            }
+            @Override public void onTagRead() {
+                Log.i("MainActivity", "NFC tag read on main screen → start pairing as tag");
+                Intent intent = new Intent(MainActivity.this, PairingActivity.class);
+                intent.putExtra("from_nfc_tag", true);
+                startActivity(intent);
+            }
+        });
+
+        // 處理冷啟動時的 NFC intent (例如 ACTION_NDEF_DISCOVERED)
+        nfcHelper.handleIntent(getIntent());
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        nfcHelper.onResume();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        nfcHelper.onPause();
     }
 
     @Override
@@ -68,6 +99,7 @@ public class MainActivity extends AppCompatActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         handlePairingDeepLink(intent);
+        nfcHelper.handleIntent(intent);
     }
 
     @Override

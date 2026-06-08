@@ -56,10 +56,12 @@ public class BleCredentialServer {
     @Nullable private BluetoothLeAdvertiser advertiser;
     @Nullable private BluetoothGattCharacteristic credentialChar;
     @Nullable private BluetoothDevice connectedDevice;
+    private final Runnable timeoutRunnable;
 
     public BleCredentialServer(@NonNull Context context, @NonNull Callback callback) {
         this.context = context.getApplicationContext();
         this.callback = callback;
+        this.timeoutRunnable = () -> callback.onError("BLE 連線逾時，請重試");
     }
 
     @SuppressLint("MissingPermission")
@@ -114,6 +116,7 @@ public class BleCredentialServer {
                 .build();
         advertiser.startAdvertising(settings, data, advertiseCallback);
         Log.i(TAG, "GATT server up + advertising nonce");
+        main.postDelayed(timeoutRunnable, 15000);
     }
 
     /** 本機當選 GO:把憑證透過 notify 推給已連線的 central。 */
@@ -131,6 +134,7 @@ public class BleCredentialServer {
 
     @SuppressLint("MissingPermission")
     public void stop() {
+        main.removeCallbacks(timeoutRunnable);
         try { if (advertiser != null) advertiser.stopAdvertising(advertiseCallback); } catch (Exception ignored) {}
         try { if (gattServer != null) gattServer.close(); } catch (Exception ignored) {}
         advertiser = null;

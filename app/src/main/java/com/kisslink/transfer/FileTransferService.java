@@ -108,6 +108,14 @@ public class FileTransferService extends Service {
         /** 第三台：拆掉目前 session，重開一場新配對。 */
         public void rePair() { resetForNewSession(); }
 
+        /**
+         * 進入配對畫面時呼叫:若上一場已結束(已連線/失敗),重置出一個全新的 Coordinator,
+         * 否則沿用。解決「配對成功後 Coordinator.finished=true,再次觸碰被忽略」的重連失敗。
+         */
+        public void ensureFreshSession() {
+            if (coordinator == null || coordinator.isFinished()) resetForNewSession();
+        }
+
         public void cancel() {
             teardownPeer();
             stopSelf();
@@ -151,7 +159,7 @@ public class FileTransferService extends Service {
     // ══════════════════════════════════════════════════════════
 
     private void createCoordinator() {
-        coordinator = new PairingCoordinator(this, wifi, Build.MODEL, new PairingCoordinator.Listener() {
+        coordinator = new PairingCoordinator(this, wifi, new PairingCoordinator.Listener() {
             @Override public void onPhase(@NonNull PairingCoordinator.Phase phase) {
                 sessionLd.postValue(mapPhase(phase));
             }
@@ -248,6 +256,10 @@ public class FileTransferService extends Service {
             }
             @Override public void onDisconnected() {
                 Log.i(TAG, "Peer disconnected");
+                new android.os.Handler(getMainLooper()).post(() -> {
+                    sessionLd.postValue(SessionState.error("與對方斷開連線"));
+                    teardownPeer();
+                });
             }
         });
 

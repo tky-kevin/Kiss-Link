@@ -8,9 +8,11 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.util.Log;
 import android.widget.Button;
 import android.widget.TextView;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
@@ -49,6 +51,7 @@ public class PairingActivity extends AppCompatActivity {
     private boolean bound = false;
     private boolean navigating = false;
     private boolean resumed = false;
+    private boolean fromNfcTag = false;
 
     // ── Factory ────────────────────────────────────────────────
 
@@ -68,6 +71,14 @@ public class PairingActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_pairing);
+        
+        Intent i = getIntent();
+        if (i != null) {
+            String peerUri = i.getStringExtra(EXTRA_PEER_TOKEN);
+            if (peerUri != null) coldLaunchPeer = PairingToken.fromUri(Uri.parse(peerUri));
+            fromNfcTag = i.getBooleanExtra("from_nfc_tag", false);
+        }
+
         tvRole    = findViewById(R.id.tvRole);
         tvStatus  = findViewById(R.id.tvStatus);
         tvHint    = findViewById(R.id.tvHint);
@@ -76,9 +87,6 @@ public class PairingActivity extends AppCompatActivity {
         tvRole.setText("碰一下配對");
         tvHint.setText("把兩台手機背面輕碰");
         btnCancel.setOnClickListener(v -> { stopSessionService(); finish(); });
-
-        String peerUri = getIntent().getStringExtra(EXTRA_PEER_TOKEN);
-        if (peerUri != null) coldLaunchPeer = PairingToken.fromUri(Uri.parse(peerUri));
 
         Intent svc = FileTransferService.intent(this);
         startForegroundService(svc);
@@ -116,16 +124,28 @@ public class PairingActivity extends AppCompatActivity {
             binder = (FileTransferService.TransferBinder) service;
             bound = true;
 
+            // 進入配對畫面=要開新一場。若上一場已結束(已連線/失敗),重置出全新 Coordinator,
+            // 否則再次觸碰會被舊 Coordinator 的 finished 旗標忽略(重連失敗)。
+            binder.ensureFreshSession();
+
             binder.getSessionState().observe(PairingActivity.this, st -> {
                 updateStatus(st);
                 if (st.isTransferStartedOrConnected()) goToTransfer();
-                else if (st.isError() && st.error != null) showError(st.error);
+                else if (st.isError() && st.error != null) {
+                    showError(st.error);
+                    if (nfc != null) nfc.resetLatched();
+                }
             });
 
             if (coldLaunchPeer != null) {
                 // 冷啟動:本機是 reader,已知對方 token → 直接接手。
                 tvStatus.setText("連線中…");
                 binder.onNfcLatchedAsReader(coldLaunchPeer);
+            } else if (fromNfcTag) {
+                // 本機是 tag，且在其他 Activity 已經被讀取過了 → 直接以 tag 身份接手。
+                tvStatus.setText("連線中…");
+                binder.onNfcLatchedAsTag();
+                fromNfcTag = false; // 避免重複觸發
             } else {
                 enableNfcIfReady();
             }
@@ -140,15 +160,31 @@ public class PairingActivity extends AppCompatActivity {
     private void ensureController() {
         if (nfc != null) return;
         nfc = new NfcPairingController(this, new NfcPairingController.Callback() {
-            @Override public void onPeerToken(PairingToken peer) {
-                tvStatus.setText("已碰到,連線中…");
-                if (binder != null) binder.onNfcLatchedAsReader(peer);
+            @Override public void onPeerToken(@NonNull PairingToken peer) {
+                if (binder != null) {
+                    SessionState st = binder.getSessionState().getValue();
+                    if (st != null && st.isError()) {
+                        Log.i("PairingActivity", "Session in error state, re-pairing as reader");
+                        nfc.resetLatched();
+                        binder.rePair();
+                    }
+                    tvStatus.setText("已碰到,連線中…");
+                    binder.onNfcLatchedAsReader(peer);
+                }
             }
             @Override public void onTagRead() {
-                tvStatus.setText("已碰到,連線中…");
-                if (binder != null) binder.onNfcLatchedAsTag();
+                if (binder != null) {
+                    SessionState st = binder.getSessionState().getValue();
+                    if (st != null && st.isError()) {
+                        Log.i("PairingActivity", "Session in error state, re-pairing as tag");
+                        nfc.resetLatched();
+                        binder.rePair();
+                    }
+                    tvStatus.setText("已碰到,連線中…");
+                    binder.onNfcLatchedAsTag();
+                }
             }
-            @Override public void onError(String message) { showError(message); }
+            @Override public void onError(@NonNull String message) { showError(message); }
         });
     }
 

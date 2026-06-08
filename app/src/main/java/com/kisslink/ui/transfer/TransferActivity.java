@@ -3,6 +3,7 @@ package com.kisslink.ui.transfer;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ProgressBar;
@@ -10,11 +11,15 @@ import android.widget.TextView;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.ViewModelProvider;
 
 import com.google.android.material.snackbar.Snackbar;
 import com.kisslink.R;
+import com.kisslink.nfc.NfcForegroundHelper;
+import com.kisslink.ui.pairing.PairingActivity;
+import com.kisslink.pairing.PairingToken;
 import com.kisslink.transfer.SendItem;
 import com.kisslink.transfer.SessionState;
 import com.kisslink.transfer.TransferProgress;
@@ -38,8 +43,10 @@ public class TransferActivity extends AppCompatActivity {
     private ProgressBar progressBar;
     private Button      btnSend, btnAddFiles;
     private View        rvFiles, receiverPanel;
+    private NfcForegroundHelper nfcHelper;
 
     private TransferViewModel viewModel;
+    private PairingToken pendingPeerForRePair = null;
 
     private final ActivityResultLauncher<String[]> filePicker =
             registerForActivityResult(new ActivityResultContracts.OpenMultipleDocuments(), uris -> {
@@ -83,12 +90,71 @@ public class TransferActivity extends AppCompatActivity {
 
         viewModel = new ViewModelProvider(this).get(TransferViewModel.class);
         viewModel.getState().observe(this, this::onSession);
+
+        nfcHelper = new NfcForegroundHelper(this, new NfcForegroundHelper.Callback() {
+            @Override public void onPeerToken(@NonNull PairingToken peer) {
+                Log.i("TransferActivity", "NFC tap during transfer → new device: " + peer);
+                SessionState st = viewModel.getState().getValue();
+                if (st != null && st.phase == SessionState.Phase.TRANSFERRING) {
+                    pendingPeerForRePair = peer;
+                    android.widget.Toast.makeText(TransferActivity.this, "傳輸中，將於目前進度完成後自動切換裝置", android.widget.Toast.LENGTH_LONG).show();
+                } else {
+                    doRePair(peer);
+                }
+            }
+            @Override public void onTagRead() {
+                Log.i("TransferActivity", "NFC tag read during transfer");
+                SessionState st = viewModel.getState().getValue();
+                if (st != null && st.phase == SessionState.Phase.TRANSFERRING) {
+                    // Cannot wait if we don't have the peer token, so just show a toast
+                    android.widget.Toast.makeText(TransferActivity.this, "傳輸中，無法切換裝置", android.widget.Toast.LENGTH_LONG).show();
+                } else {
+                    viewModel.rePair();
+                    Intent intent = new Intent(TransferActivity.this, PairingActivity.class);
+                    intent.putExtra("from_nfc_tag", true);
+                    startActivity(intent);
+                    finish();
+                }
+            }
+        });
+    }
+
+    private void doRePair(PairingToken peer) {
+        viewModel.rePair();
+        startActivity(PairingActivity.newIntentForColdLaunch(this, peer));
+        finish();
     }
 
     @Override protected void onStart() { super.onStart(); viewModel.bindService(this); }
     @Override protected void onStop()  { super.onStop();  viewModel.unbindService(this); }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        nfcHelper.onResume();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        nfcHelper.onPause();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        nfcHelper.handleIntent(intent);
+    }
+
     private void onSession(SessionState st) {
+        if (pendingPeerForRePair != null && st.phase != SessionState.Phase.TRANSFERRING) {
+            PairingToken p = pendingPeerForRePair;
+            pendingPeerForRePair = null;
+            doRePair(p);
+            return;
+        }
+
         switch (st.phase) {
             case PAIRING_LATCHED:
             case PAIRING_LINKING:

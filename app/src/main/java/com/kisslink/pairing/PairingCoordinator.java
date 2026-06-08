@@ -69,15 +69,19 @@ public class PairingCoordinator {
     @Nullable private Observer<GroupCredential> credObserver;
 
     public PairingCoordinator(@NonNull Context ctx, @NonNull WifiDirectManager wifi,
-                              @NonNull String deviceName, @NonNull Listener listener) {
+                              @NonNull Listener listener) {
         this.context  = ctx.getApplicationContext();
         this.wifi     = wifi;
         this.listener = listener;
-        this.localToken = PairingToken.create(deviceName);
+        // 與各前景畫面 HCE 廣播的 token 同源,確保「對方讀到的」=「本機選舉用的」。
+        this.localToken = LocalPairing.current();
     }
 
     /** 本機這場配對的 token(供 NfcPairingController 寫進 HCE)。 */
     @NonNull public PairingToken localToken() { return localToken; }
+
+    /** 本場是否已結束(已連線或失敗)。供上層判斷是否需要重開新一場。 */
+    public boolean isFinished() { return finished; }
 
     // ══════════════════════════════════════════════════════════
     //  NFC latch 入口（由前景 Activity 經 binder 餵入）
