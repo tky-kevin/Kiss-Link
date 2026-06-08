@@ -148,6 +148,9 @@ public class BleCredentialClient {
         @SuppressLint("MissingPermission")
         @Override public void onConnectionStateChange(BluetoothGatt g, int status, int newState) {
             if (newState == BluetoothGatt.STATE_CONNECTED) {
+                // BLE 已連上 → 取消逾時。後續 token/憑證走 live link(快),
+                // Wi-Fi 建群有 WifiDirectManager 自己的逾時保護,不該再算進 BLE 額度。
+                main.removeCallbacks(timeoutRunnable);
                 Log.d(TAG, "GATT connected → discovering services");
                 g.discoverServices();
             } else if (newState == BluetoothGatt.STATE_DISCONNECTED) {

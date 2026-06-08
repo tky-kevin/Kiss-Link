@@ -159,6 +159,8 @@ public class BleCredentialServer {
         @Override
         public void onConnectionStateChange(BluetoothDevice device, int status, int newState) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
+                // central 已連上 → 取消逾時(BLE 已通,後續走 live link + Wi-Fi 自有逾時)。
+                main.removeCallbacks(timeoutRunnable);
                 connectedDevice = device;
                 Log.d(TAG, "Central connected");
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
