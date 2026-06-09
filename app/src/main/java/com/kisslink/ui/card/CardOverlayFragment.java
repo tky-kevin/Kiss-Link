@@ -100,9 +100,11 @@ public class CardOverlayFragment extends DialogFragment {
             dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
             dialog.setCanceledOnTouchOutside(true);
 
-            // 虛化後方主頁（API 31+）
+            // 模糊主頁畫面（直接對 host Activity 套 RenderEffect，API 31+）
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                applyBlurBehind(dialog.getWindow());
+                requireActivity().getWindow().getDecorView().setRenderEffect(
+                    android.graphics.RenderEffect.createBlurEffect(
+                        18f, 18f, android.graphics.Shader.TileMode.CLAMP));
             }
         }
         // 播放進場動畫：card 從上方飛入中央
@@ -221,16 +223,6 @@ public class CardOverlayFragment extends DialogFragment {
                 .start();
     }
 
-    private void applyBlurBehind(Window window) {
-        try {
-            window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
-            WindowManager.LayoutParams lp = window.getAttributes();
-            java.lang.reflect.Field f = lp.getClass().getField("blurBehindRadius");
-            f.set(lp, 25);
-            window.setAttributes(lp);
-        } catch (Exception ignored) {}
-    }
-
     private void startSwayAnimation() {
         stopSwayAnimation(); // 防止重複
         swayAnimator = ObjectAnimator.ofFloat(cardAnimTarget, "rotation", -2.5f, 2.5f);
@@ -307,5 +299,9 @@ public class CardOverlayFragment extends DialogFragment {
         stopSwayAnimation();
         KissLinkHCEService.clearCredential();
         KissLinkHCEService.clearOnCardDeliveredCallback();
+        // 解除主頁模糊
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && isAdded()) {
+            requireActivity().getWindow().getDecorView().setRenderEffect(null);
+        }
     }
 }

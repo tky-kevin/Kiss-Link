@@ -255,12 +255,16 @@ public class TransferBottomSheet extends BottomSheetDialogFragment {
     }
 
     private void onNfcCard(BusinessCard card) {
-        // 收到名片：停止 Service、啟動 CardDisplayActivity（帶動畫），關閉 sheet
-        if (isAdded()) {
-            requireActivity().stopService(
-                    new Intent(requireActivity(), FileTransferService.class));
-            requireActivity().startActivity(CardDisplayActivity.newIntent(requireActivity(), card));
+        if (!isAdded()) { dismiss(); return; }
+        requireActivity().stopService(
+                new Intent(requireActivity(), FileTransferService.class));
+        // 先模糊主頁畫面，再啟動名片顯示（MainActivity.onResume 會解除模糊）
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            requireActivity().getWindow().getDecorView().setRenderEffect(
+                android.graphics.RenderEffect.createBlurEffect(
+                    18f, 18f, android.graphics.Shader.TileMode.CLAMP));
         }
+        requireActivity().startActivity(CardDisplayActivity.newIntent(requireActivity(), card));
         dismiss();
     }
 

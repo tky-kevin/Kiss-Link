@@ -86,6 +86,10 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         refreshProfile();
+        // 返回主頁時確保模糊效果已解除（CardDisplayActivity 關閉後觸發）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            getWindow().getDecorView().setRenderEffect(null);
+        }
     }
 
     @Override

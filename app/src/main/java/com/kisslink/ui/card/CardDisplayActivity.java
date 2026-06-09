@@ -42,10 +42,6 @@ public class CardDisplayActivity extends AppCompatActivity {
         lp.dimAmount = 0.75f;
         getWindow().setAttributes(lp);
 
-        // 虛化後方主頁（API 31+）
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            applyBlurBehind();
-        }
 
         setContentView(R.layout.activity_card_display);
 
@@ -173,16 +169,6 @@ public class CardDisplayActivity extends AppCompatActivity {
                 .setDuration(700)
                 .setInterpolator(new OvershootInterpolator(0.6f))
                 .start();
-    }
-
-    private void applyBlurBehind() {
-        try {
-            getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
-            android.view.WindowManager.LayoutParams lp = getWindow().getAttributes();
-            java.lang.reflect.Field f = lp.getClass().getField("blurBehindRadius");
-            f.set(lp, 25);
-            getWindow().setAttributes(lp);
-        } catch (Exception ignored) {}
     }
 
     private void dismissWithSwipeUp(View cardRoot) {
