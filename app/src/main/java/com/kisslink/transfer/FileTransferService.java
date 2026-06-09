@@ -139,6 +139,9 @@ public class FileTransferService extends Service {
         createNotificationChannel();
         wifi = new WifiDirectManager(this);
         wifi.registerReceiver(this);
+        // 清掉「上一場被強制停止(kill,未經 removeGroup)」殘留在 OS 的 Wi-Fi Direct 群組。
+        // 無群組時 removeGroup 會優雅失敗,無害。
+        wifi.removeGroup();
         createCoordinator();
     }
 
