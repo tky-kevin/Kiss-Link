@@ -78,6 +78,9 @@ public class FileTransferService extends Service {
     private boolean serverReady = false; // server 已與接收方握手完成
     private boolean sendStarted = false; // 已開始送檔（避免重複）
 
+    // ── 接收方收到的檔案 URI 清單（供預覽用）─────────────────────
+    private final java.util.List<String> receivedFileUris = new java.util.ArrayList<>();
+
     /** 傳輸層進度匯總（內部用）—— server/client 的進度都橋接到此。 */
     private final MutableLiveData<TransferProgress> serviceLd =
             new MutableLiveData<>(TransferProgress.waiting());
@@ -147,6 +150,11 @@ public class FileTransferService extends Service {
         public void cancel() {
             if (transferServer != null) transferServer.cancel();
             if (transferClient != null) transferClient.cancel();
+        }
+
+        /** 接收方：取得本次傳輸收到的所有檔案 URI（ALL_DONE 後使用）*/
+        public java.util.List<String> getReceivedFileUris() {
+            return new java.util.ArrayList<>(receivedFileUris);
         }
     }
 
@@ -270,7 +278,8 @@ public class FileTransferService extends Service {
      * 逐檔完成回呼（由 TransferServer/TransferClient 在背景執行緒同步呼叫）——
      * 一檔一次、不經會合併的 LiveData，因此歷史紀錄數量永遠正確。
      */
-    private void onFileCompleted(String fileName, long sizeBytes, long avgSpeedBps, boolean success) {
+    private void onFileCompleted(String fileName, long sizeBytes, long avgSpeedBps,
+                                 boolean success, @Nullable String fileUri) {
         if (role == null) return;
         String direction = ROLE_SENDER.equals(role) ? "SEND" : "RECEIVE";
 
@@ -283,9 +292,14 @@ public class FileTransferService extends Service {
         }
 
         TransferRepository repo = TransferRepository.getInstance(this);
-        TransferRecordEntity record = repo.buildRecord(direction, fileName, sizeBytes, success, avgSpeedBps, null);
+        TransferRecordEntity record = repo.buildRecord(direction, fileName, sizeBytes, success, avgSpeedBps, fileUri);
         record.peerDeviceName = peerName;
         repo.insert(record);
+
+        // 接收方：收集 URI 供預覽使用
+        if (ROLE_RECEIVER.equals(role) && fileUri != null && success) {
+            receivedFileUris.add(fileUri);
+        }
     }
 
     // ══════════════════════════════════════════════════════════

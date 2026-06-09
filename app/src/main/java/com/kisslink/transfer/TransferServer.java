@@ -73,7 +73,7 @@ public class TransferServer {
 
     private void fireFileCompleted(String name, long size, long speed, boolean success) {
         TransferEventListener l = eventListener;
-        if (l != null && name != null) l.onFileCompleted(name, size, speed, success);
+        if (l != null && name != null) l.onFileCompleted(name, size, speed, success, null);
     }
 
     private final MutableLiveData<TransferProgress> progressLd =
