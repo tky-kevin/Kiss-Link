@@ -304,9 +304,9 @@ public class CardOverlayFragment extends DialogFragment {
                 android.graphics.Bitmap orig = android.graphics.BitmapFactory.decodeStream(
                     requireContext().getContentResolver().openInputStream(uri));
                 if (orig != null) {
-                    android.graphics.Bitmap scaled = android.graphics.Bitmap.createScaledBitmap(orig, 50, 50, true);
+                    android.graphics.Bitmap scaled = android.graphics.Bitmap.createScaledBitmap(orig, 120, 120, true);
                     java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-                    scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 15, baos);
+                    scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 50, baos);
                     card.setThumbnailBytes(baos.toByteArray());
                 }
             } catch (Exception ignored) {}

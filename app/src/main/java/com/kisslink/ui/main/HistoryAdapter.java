@@ -75,11 +75,19 @@ public class HistoryAdapter extends ListAdapter<TransferRecordEntity, HistoryAda
         // 檔名
         h.tvFileName.setText(r.fileName != null ? r.fileName : "未知檔案");
 
-        // 時間 + peer
-        String time = sdf.format(new Date(r.timestampMs));
-        String peer = (r.peerDeviceName != null && !r.peerDeviceName.isEmpty())
-                ? " · " + r.peerDeviceName : "";
-        h.tvMeta.setText(time + peer);
+        // 時間（單獨）
+        h.tvMeta.setText(sdf.format(new Date(r.timestampMs)));
+
+        // 對方名字（右側獨立顯示）
+        if (h.tvPeerName != null) {
+            boolean hasPeer = r.peerDeviceName != null && !r.peerDeviceName.isEmpty();
+            if (hasPeer) {
+                h.tvPeerName.setText(r.peerDeviceName);
+                h.tvPeerName.setVisibility(View.VISIBLE);
+            } else {
+                h.tvPeerName.setVisibility(View.GONE);
+            }
+        }
 
         // 大小 + 速度 + 成功/失敗
         String size = formatSize(r.fileSizeBytes);
@@ -206,7 +214,7 @@ public class HistoryAdapter extends ListAdapter<TransferRecordEntity, HistoryAda
     }
 
     static class VH extends RecyclerView.ViewHolder {
-        TextView tvDirectionIcon, tvFileName, tvMeta, tvSize;
+        TextView tvDirectionIcon, tvFileName, tvMeta, tvSize, tvPeerName;
         ImageView ivThumb, ivThumbPlay, ivFileIcon;
         View ivStatus;
 
@@ -216,6 +224,7 @@ public class HistoryAdapter extends ListAdapter<TransferRecordEntity, HistoryAda
             tvFileName      = v.findViewById(R.id.tvFileName);
             tvMeta          = v.findViewById(R.id.tvMeta);
             tvSize          = v.findViewById(R.id.tvSize);
+            tvPeerName      = v.findViewById(R.id.tvPeerName);
             ivThumb         = v.findViewById(R.id.ivThumb);
             ivThumbPlay     = v.findViewById(R.id.ivThumbPlay);
             ivFileIcon      = v.findViewById(R.id.ivFileIcon);

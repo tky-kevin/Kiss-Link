@@ -52,7 +52,7 @@
             android:layout_gravity="start"/>
     </FrameLayout>
 
-    <!-- 右邊：資訊欄 -->
+    <!-- 中間：資訊欄 -->
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="match_parent"
@@ -60,7 +60,7 @@
         android:orientation="vertical"
         android:gravity="center_vertical"
         android:paddingStart="12dp"
-        android:paddingEnd="12dp">
+        android:paddingEnd="8dp">
 
         <!-- 方向 + 檔名 -->
         <LinearLayout
@@ -89,7 +89,7 @@
                 android:ellipsize="middle"/>
         </LinearLayout>
 
-        <!-- 時間 + peer -->
+        <!-- 時間（單獨，不含 peer） -->
         <TextView
             android:id="@+id/tvMeta"
             android:layout_width="match_parent"
@@ -104,8 +104,23 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textSize="11sp"
-            android:textColor="@color/label_tertiary"
+            android:textColor="@color/notion_text_tertiary"
             android:layout_marginTop="2dp"/>
     </LinearLayout>
+
+    <!-- 右邊：對方名字 -->
+    <TextView
+        android:id="@+id/tvPeerName"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:gravity="center_vertical"
+        android:paddingEnd="12dp"
+        android:textSize="12sp"
+        android:textColor="?attr/colorPrimary"
+        android:maxLines="2"
+        android:maxWidth="80dp"
+        android:ellipsize="end"
+        android:textAlignment="viewEnd"
+        android:visibility="gone"/>
 
 </LinearLayout>
