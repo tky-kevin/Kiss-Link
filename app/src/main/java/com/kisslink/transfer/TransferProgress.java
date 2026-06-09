@@ -1,7 +1,7 @@
 package com.kisslink.transfer;
 
 /**
- * 傳輸進度快照，由 TransferServer / TransferClient 透過 LiveData 發射。
+ * 傳輸進度快照，由 PeerConnection 透過 LiveData 發射。
  * 不可變（所有欄位 final），可安全跨執行緒傳遞。
  */
 public final class TransferProgress {

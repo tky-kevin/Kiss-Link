@@ -582,7 +582,7 @@ public class WifiDirectManager implements WifiDirectEventCallback {
             stopClientPoll();
             ConnectionState cs = stateLd.getValue();
             if (cs == ConnectionState.CONNECTING) {
-                // P2P group 已形成，立即轉 CONNECTED 讓 TransferClient 開始 TCP 連線。
+                // P2P group 已形成，立即轉 CONNECTED 讓 PeerConnection 開始 TCP 連線。
                 // bindToP2pNetwork() 僅用於優化路由（讓 socket 走 P2P 介面），
                 // 部分裝置不回報 P2P 網路至 ConnectivityManager，等待會造成 timeout。
                 cancelTimeout();

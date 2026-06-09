@@ -87,6 +87,11 @@ public class PeerConnection {
         if (running) return;
         running = true;
         try {
+            socket.setTcpNoDelay(true); // 標頭等小封包不被 Nagle 延遲,改善吞吐爬升
+            try {
+                socket.setSendBufferSize(1 << 20);    // 1MB:讓 TCP 視窗更快爬到滿速
+                socket.setReceiveBufferSize(1 << 20);
+            } catch (Exception ignored) {}
             out = new BufferedOutputStream(socket.getOutputStream());
             socket.setSoTimeout(LIVENESS_TIMEOUT_MS); // 逾時內沒收到任何封包(含心跳)→ 視為斷線
         } catch (IOException e) {

@@ -76,6 +76,25 @@ public class FileTransferService extends Service {
     /** 是否正在傳檔(由進度橋接更新)。 */
     private boolean transferring = false;
 
+    /** 省電:無 UI 綁定(背景)且非傳輸,閒置此時間後自動結束服務(拆 Wi-Fi 群組)。 */
+    private static final long IDLE_TEARDOWN_MS = 120_000;
+    private boolean uiBound = false;
+    private final Runnable idleTeardown = () -> {
+        if (!uiBound && !transferring) {
+            Log.i(TAG, "Idle in background → stopping service to release Wi-Fi Direct");
+            stopSelf();
+        }
+    };
+
+    private void cancelIdleTeardown() { mainHandler.removeCallbacks(idleTeardown); }
+
+    private void scheduleIdleTeardownIfIdle() {
+        cancelIdleTeardown();
+        if (!uiBound && !transferring) {
+            mainHandler.postDelayed(idleTeardown, IDLE_TEARDOWN_MS);
+        }
+    }
+
     @Nullable private LiveData<TransferProgress> peerProgressSrc;
     @Nullable private Observer<TransferProgress> peerProgressObs;
 
@@ -127,7 +146,20 @@ public class FileTransferService extends Service {
     }
 
     @Override
-    public IBinder onBind(Intent intent) { return binder; }
+    public IBinder onBind(Intent intent) { uiBound = true; cancelIdleTeardown(); return binder; }
+
+    @Override
+    public boolean onUnbind(Intent intent) {
+        uiBound = false;
+        scheduleIdleTeardownIfIdle(); // 背景閒置 → 計時自動拆除省電
+        return true; // 讓之後重新綁定走 onRebind
+    }
+
+    @Override
+    public void onRebind(Intent intent) {
+        uiBound = true;
+        cancelIdleTeardown();
+    }
 
     // ══════════════════════════════════════════════════════════
     //  生命週期
@@ -388,7 +420,10 @@ public class FileTransferService extends Service {
             boolean now = (tp.phase == TransferProgress.Phase.TRANSFERRING);
             boolean ended = transferring && !now;
             transferring = now;
-            if (ended) maybeSwitchToPendingPeer();
+            if (ended) {
+                maybeSwitchToPendingPeer();
+                scheduleIdleTeardownIfIdle(); // 傳完且在背景 → 計時省電
+            }
         };
         // observeForever 須在主執行緒
         new android.os.Handler(getMainLooper()).post(() -> {

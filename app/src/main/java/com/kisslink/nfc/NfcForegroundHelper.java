@@ -151,20 +151,33 @@ public class NfcForegroundHelper {
         }, "nfc-fg-read").start();
     }
 
-    /** 對 HCE 送 SELECT AID,取回 token bytes 並解析。在背景執行緒呼叫。 */
+    /**
+     * 對 HCE 送 SELECT AID,取回 token bytes 並解析。在背景執行緒呼叫。
+     * 重試數次:碰觸瞬間射頻常不穩(transient「tag lost / connect 失敗」),快速重試多半能救回。
+     */
     @Nullable
     public static PairingToken readToken(@NonNull Tag tag) {
         IsoDep iso = IsoDep.get(tag);
         if (iso == null) return null;
         try {
-            iso.connect();
-            iso.setTimeout(3000);
-            byte[] resp = iso.transceive(APDUHelper.buildSelectAidApdu());
-            byte[] payload = APDUHelper.extractPayload(resp);
-            if (payload == null) return null;
-            return PairingToken.fromUri(Uri.parse(new String(payload, StandardCharsets.UTF_8)));
-        } catch (Exception e) {
-            Log.w(TAG, "readToken failed: " + e.getMessage());
+            for (int attempt = 1; attempt <= 3; attempt++) {
+                try {
+                    if (!iso.isConnected()) iso.connect();
+                    iso.setTimeout(5000);
+                    byte[] resp = iso.transceive(APDUHelper.buildSelectAidApdu());
+                    byte[] payload = APDUHelper.extractPayload(resp);
+                    if (payload != null) {
+                        return PairingToken.fromUri(
+                                Uri.parse(new String(payload, StandardCharsets.UTF_8)));
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "readToken attempt " + attempt + " failed: " + e.getMessage());
+                    try { Thread.sleep(60); } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
             return null;
         } finally {
             try { iso.close(); } catch (Exception ignored) {}
