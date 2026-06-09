@@ -1,0 +1,360 @@
+package com.kisslink.ui.home
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.util.AttributeSet
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.AbstractComposeView
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
+import kotlinx.coroutines.delay
+import kotlin.math.cos
+import kotlin.math.hypot
+import kotlin.math.min
+import kotlin.math.sin
+
+/**
+ * 中央視覺模組（Compose）。
+ *
+ * 設計：
+ *  - **NFC 波紋常駐**：同心圓往外擴散，所有狀態都顯示（待機呼吸感 = 與未連線相同的波紋，只是中央換成頭像）。
+ *  - **中央**：未連線=NFC 節點；已連線=對方頭像（較大）。
+ *  - **傳輸中**：頭像外圈環形進度條（12 點鐘起跑、半徑大於頭像 → 不被遮擋）；速度由外層 headline 顯示，頭像上不放數字。
+ *  - **完成**：頭像處先播打勾動畫（此時隱藏頭像），再淡回頭像。
+ *  - **名片飛出**：[playCardFly] genie 縮入頭像。
+ */
+class BeamStageView @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null
+) : AbstractComposeView(context, attrs) {
+
+    companion object {
+        const val READY = 0
+        const val CONNECTING = 1
+        const val CONNECTED = 2
+        const val TRANSFERRING = 3
+        const val DONE = 4
+        const val ERROR = 5
+        const val SEND = 0
+        const val RECEIVE = 1
+    }
+
+    private val phaseState = mutableStateOf(READY)
+    private val directionState = mutableStateOf(SEND)
+    private val progressState = mutableStateOf(0f)
+    private val peerAvatarState = mutableStateOf<Bitmap?>(null)
+    private val selfAvatarState = mutableStateOf<Bitmap?>(null)
+    private val peerNameState = mutableStateOf<String?>(null)
+    private val selfNameState = mutableStateOf<String?>(null)
+    private val cardFlyTrigger = mutableStateOf(0)
+
+    fun setPhase(p: Int) { phaseState.value = p }
+    fun setDirection(d: Int) { directionState.value = d }
+    fun setProgress(p: Float) { progressState.value = p.coerceIn(0f, 1f) }
+    fun setPeerAvatar(b: Bitmap?) { peerAvatarState.value = b }
+    fun setSelfAvatar(b: Bitmap?) { selfAvatarState.value = b }
+    fun setPeerIdentity(name: String?) { peerNameState.value = monogram(name) }
+    fun setSelfIdentity(name: String?) { selfNameState.value = monogram(name) }
+
+    /** 觸發名片飛向頭像的 genie 動畫。 */
+    fun playCardFly() { cardFlyTrigger.value++ }
+
+    private fun monogram(name: String?): String? {
+        val s = name?.trim().orEmpty()
+        return if (s.isEmpty()) null else s.substring(0, 1).uppercase()
+    }
+
+    @Composable
+    override fun Content() {
+        BeamStage(
+            phase = phaseState.value,
+            rawProgress = progressState.value,
+            peerAvatar = peerAvatarState.value,
+            peerMono = peerNameState.value,
+            cardFlyTrigger = cardFlyTrigger.value
+        )
+    }
+}
+
+private val INK = Color(0xFF23201B)
+private val TRACK = Color(0xFFDCD8CF)
+private val ACCENT = Color(0xFFB07A32)
+private val PANEL = Color(0xFFF4F2EC)
+
+@Composable
+private fun BeamStage(
+    phase: Int,
+    rawProgress: Float,
+    peerAvatar: Bitmap?,
+    peerMono: String?,
+    cardFlyTrigger: Int
+) {
+    val connected = phase == BeamStageView.CONNECTED ||
+        phase == BeamStageView.TRANSFERRING || phase == BeamStageView.DONE
+    val transferring = phase == BeamStageView.TRANSFERRING
+    val done = phase == BeamStageView.DONE
+
+    // 常駐 NFC 漣漪
+    val infinite = rememberInfiniteTransition(label = "beam")
+    val ripple by infinite.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(2600, easing = LinearEasing)),
+        label = "ripple"
+    )
+
+    // #4 平滑進度
+    // 線性補間：配合外層已單調化的進度，視覺速度穩定（不忽快忽慢、不回退）
+    val animProgress by animateFloatAsState(
+        targetValue = when {
+            done -> 1f
+            transferring -> rawProgress
+            else -> 0f
+        },
+        animationSpec = tween(400, easing = LinearEasing),
+        label = "progress"
+    )
+
+    // 完成打勾 / 頭像切換動畫
+    val avatarAlpha = remember { Animatable(0f) }
+    val checkAlpha = remember { Animatable(0f) }
+    val checkDraw = remember { Animatable(0f) }
+    LaunchedEffect(phase) {
+        when (phase) {
+            BeamStageView.DONE -> {
+                avatarAlpha.animateTo(0f, tween(140))      // 隱藏頭像
+                checkDraw.snapTo(0f); checkAlpha.snapTo(1f)
+                checkDraw.animateTo(1f, tween(440, easing = FastOutSlowInEasing)) // 畫勾
+                delay(560)
+                checkAlpha.animateTo(0f, tween(220))       // 勾淡出
+                avatarAlpha.animateTo(1f, tween(380, easing = FastOutSlowInEasing)) // 切回頭像
+            }
+            BeamStageView.CONNECTED, BeamStageView.TRANSFERRING -> {
+                checkAlpha.snapTo(0f); checkDraw.snapTo(0f)
+                if (avatarAlpha.value < 1f) avatarAlpha.animateTo(1f, tween(340))
+            }
+            else -> {
+                avatarAlpha.snapTo(0f); checkAlpha.snapTo(0f); checkDraw.snapTo(0f)
+            }
+        }
+    }
+
+    // #14 名片飛出
+    val fly = remember { Animatable(0f) }
+    LaunchedEffect(cardFlyTrigger) {
+        if (cardFlyTrigger > 0) {
+            fly.snapTo(0f)
+            fly.animateTo(1f, animationSpec = tween(640, easing = FastOutSlowInEasing))
+        }
+    }
+
+    val density = LocalDensity.current
+    val avatarR = 56.dp        // 比之前(48dp)更大
+    val ringGap = 16.dp
+
+    // 用整個可用空間置中（不再用固定 240dp，避免畫面較矮時上/下緣被裁切）
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+
+            // ── 環/波紋層 ──
+            Canvas(modifier = Modifier.matchParentSize()) {
+                val c = Offset(size.width / 2f, size.height / 2f)
+                val avatarPx = avatarR.toPx()
+                val ringR = avatarPx + ringGap.toPx()
+                val strokeW = 5.dp.toPx()
+
+                // 常駐 NFC 漣漪。傳輸時從進度環往外擴散（不從頭像內擴散）；其餘狀態從中央往外。
+                val rippleStart = if (transferring || done) ringR + 3.dp.toPx() else avatarPx * 0.5f
+                val rippleMax = (if (transferring || done) ringR else avatarPx) + 46.dp.toPx()
+                for (i in 0..2) {
+                    val t = (ripple + i / 3f) % 1f
+                    val r = rippleStart + (rippleMax - rippleStart) * t
+                    val a = (1f - t).coerceIn(0f, 1f) * 0.55f
+                    if (a > 0f) {
+                        drawCircle(ACCENT.copy(alpha = a), radius = r, center = c,
+                            style = Stroke(width = 2.5.dp.toPx()))
+                    }
+                }
+
+                // 傳輸/完成：頭像外圈進度環
+                if (transferring || done) {
+                    drawCircle(TRACK, radius = ringR, center = c, style = Stroke(width = strokeW))
+                    val sweep = animProgress * 360f
+                    drawArc(
+                        color = ACCENT, startAngle = -90f, sweepAngle = sweep, useCenter = false,
+                        topLeft = Offset(c.x - ringR, c.y - ringR),
+                        size = Size(ringR * 2f, ringR * 2f),
+                        style = Stroke(width = strokeW, cap = StrokeCap.Round)
+                    )
+                    val ang = Math.toRadians((-90f + sweep).toDouble())
+                    val dot = Offset(c.x + ringR * cos(ang).toFloat(), c.y + ringR * sin(ang).toFloat())
+                    drawCircle(ACCENT, radius = 4.5.dp.toPx(), center = dot)
+                    drawCircle(Color.White.copy(alpha = 0.9f), radius = 2.dp.toPx(), center = dot)
+                }
+            }
+
+            // ── 中央節點 ──
+            if (!connected) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(ACCENT.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(18.dp)
+                            .clip(CircleShape)
+                            .background(ACCENT)
+                    )
+                }
+            } else {
+                Box(modifier = Modifier.size(avatarR * 2), contentAlignment = Alignment.Center) {
+                    // 頭像（依 avatarAlpha 淡入/縮放）
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .graphicsLayer {
+                                alpha = avatarAlpha.value
+                                val sc = 0.86f + 0.14f * avatarAlpha.value
+                                scaleX = sc; scaleY = sc
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val bmp = peerAvatar
+                        if (bmp != null) {
+                            Image(
+                                bitmap = bmp.asImageBitmap(),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .clip(CircleShape)
+                                    .border(1.5.dp, TRACK, CircleShape)
+                            )
+                        } else {
+                            // 對方沒有自訂頭像 → 顯示預設頭像圖（不再顯示姓名首字）
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .clip(CircleShape)
+                                    .background(PANEL)
+                                    .border(1.5.dp, TRACK, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Image(
+                                    painter = painterResource(com.kisslink.R.drawable.ic_avatar_default),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .matchParentSize()
+                                        .padding(avatarR * 0.30f)
+                                )
+                            }
+                        }
+                    }
+
+                    // 完成打勾（頭像隱藏時顯示）
+                    if (checkAlpha.value > 0f) {
+                        Canvas(modifier = Modifier.matchParentSize()) {
+                            val c = Offset(size.width / 2f, size.height / 2f)
+                            val s = size.minDimension * 0.30f
+                            drawCheckMark(c, s, checkDraw.value, ACCENT, 4.dp.toPx(), checkAlpha.value)
+                        }
+                    }
+                }
+            }
+
+            // ── #14 名片飛出：置中、小尺寸縮入對方頭像（完全在可見範圍內，不會被裁切）──
+            val t = fly.value
+            if (t > 0f && t < 1f) {
+                val e = FastOutSlowInEasing.transform(t)
+                val driftPx = with(density) { 22.dp.toPx() }
+                Box(
+                    modifier = Modifier
+                        .size(width = 92.dp, height = 116.dp)
+                        .graphicsLayer {
+                            val s = lerp(0.82f, 0.06f, e)
+                            scaleX = s
+                            scaleY = s
+                            translationY = lerp(-driftPx, 0f, e)  // 由頭像上方些微下沉，縮入頭像中心
+                            alpha = (1f - ((t - 0.55f) / 0.45f)).coerceIn(0f, 1f)
+                        }
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(PANEL)
+                        .border(1.dp, TRACK, RoundedCornerShape(18.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    BasicText(
+                        text = "名片",
+                        style = TextStyle(color = INK, fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 畫勾，依 fraction f（0..1）逐段繪出。 */
+private fun DrawScope.drawCheckMark(
+    c: Offset, s: Float, f: Float, color: Color, w: Float, alpha: Float
+) {
+    val p0 = Offset(c.x - s * 0.62f, c.y + s * 0.04f)
+    val p1 = Offset(c.x - 0.12f * s, c.y + s * 0.5f)
+    val p2 = Offset(c.x + s * 0.66f, c.y - s * 0.42f)
+    val len1 = hypot((p1.x - p0.x).toDouble(), (p1.y - p0.y).toDouble()).toFloat()
+    val len2 = hypot((p2.x - p1.x).toDouble(), (p2.y - p1.y).toDouble()).toFloat()
+    val tot = len1 + len2
+    val drawn = f * tot
+    val col = color.copy(alpha = alpha)
+
+    val f1 = (min(drawn, len1) / len1).coerceIn(0f, 1f)
+    val a1 = Offset(lerp(p0.x, p1.x, f1), lerp(p0.y, p1.y, f1))
+    drawLine(col, p0, a1, strokeWidth = w, cap = StrokeCap.Round)
+    if (drawn > len1) {
+        val f2 = ((drawn - len1) / len2).coerceIn(0f, 1f)
+        val a2 = Offset(lerp(p1.x, p2.x, f2), lerp(p1.y, p2.y, f2))
+        drawLine(col, p1, a2, strokeWidth = w, cap = StrokeCap.Round)
+    }
+}

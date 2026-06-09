@@ -80,10 +80,12 @@ public class PeerConnection {
     private long recvBatchId = 0;
     private long lastRecvActivity = 0;
 
-    /** 一筆待送：項目 + 其所屬批次 id。 */
+    /** 一筆待送：項目 + 其所屬批次 id + 在批次中的序號/總數（供整包進度與「最後一筆=ALL_DONE」判定）。 */
     private static final class OutItem {
-        final SendItem item; final long batchId;
-        OutItem(SendItem item, long batchId) { this.item = item; this.batchId = batchId; }
+        final SendItem item; final long batchId; final int index; final int count;
+        OutItem(SendItem item, long batchId, int index, int count) {
+            this.item = item; this.batchId = batchId; this.index = index; this.count = count;
+        }
     }
 
     private final MutableLiveData<TransferProgress> progressLd =
@@ -165,7 +167,8 @@ public class PeerConnection {
     /** 排入待送項目(任一時刻、可多次)；同一次呼叫的所有項目歸為同一批次。 */
     public void sendItems(@NonNull List<SendItem> items) {
         long batch = System.currentTimeMillis();
-        for (SendItem it : items) outQueue.offer(new OutItem(it, batch));
+        int n = items.size();
+        for (int i = 0; i < n; i++) outQueue.offer(new OutItem(items.get(i), batch, i, n));
     }
 
     public void close() {
@@ -190,7 +193,7 @@ public class PeerConnection {
                 if (o == STOP) break;
                 if (!(o instanceof OutItem)) continue;
                 OutItem oi = (OutItem) o;
-                sendOne(oi.item, oi.batchId);
+                sendOne(oi.item, oi.batchId, oi.index, oi.count);
             }
         } catch (InterruptedException ignored) {
             Thread.currentThread().interrupt();
@@ -219,7 +222,7 @@ public class PeerConnection {
         }
     }
 
-    private void sendOne(SendItem item, long batchId) {
+    private void sendOne(SendItem item, long batchId, int index, int count) {
         long started = System.currentTimeMillis();
         boolean ok = false;
         try {
@@ -227,6 +230,8 @@ public class PeerConnection {
             JSONObject meta = new JSONObject();
             meta.put("n", item.name);
             meta.put("m", item.mime);
+            meta.put("i", index);   // 批次序號（供接收端整包進度）
+            meta.put("c", count);   // 批次總數
             byte[] metaBytes = meta.toString().getBytes(StandardCharsets.UTF_8);
             long size = item.size >= 0 ? item.size : 0;
             TransferProtocol.Header mh =
@@ -244,13 +249,15 @@ public class PeerConnection {
                             TransferProtocol.makeDataChunk(0, offset, r, crc);
                     writeFrame(TransferProtocol.encodeHeader(ch), buf, 0, r);
                     offset += r; sent += r;
-                    emitProgress(true, item.name, size, sent, started, item.itemType, batchId);
+                    emitProgress(true, item.name, size, sent, started, item.itemType, batchId, index, count);
                 }
             }
             // COMPLETE
             writeFrame(TransferProtocol.encodeHeader(TransferProtocol.makeComplete(0)), null, 0, 0);
             ok = true;
-            emitDone(true, item.name, size, item.itemType, batchId);
+            // 批次最後一筆 → ALL_DONE（UI 顯示「傳輸完成」）；否則 FILE_DONE。
+            if (index >= count - 1) emitAllDone(true, item.name, size, item.itemType, batchId, count);
+            else emitDone(true, item.name, size, item.itemType, batchId, index, count);
         } catch (Exception e) {
             Log.e(TAG, "sendOne failed: " + item.name, e);
         } finally {
@@ -300,13 +307,15 @@ public class PeerConnection {
                         JSONObject meta = new JSONObject(new String(mb, StandardCharsets.UTF_8));
                         String name = meta.optString("n", "received_" + System.currentTimeMillis());
                         String mime = meta.optString("m", "application/octet-stream");
+                        int fi = meta.optInt("i", 0);
+                        int fc = meta.optInt("c", 0);
                         if (cur != null) cur.abort();
                         // 批次：距上次活動超過間隔 → 新批次
                         long now = System.currentTimeMillis();
                         if (now - lastRecvActivity > RECV_BATCH_GAP_MS) recvBatchId = now;
                         lastRecvActivity = now;
-                        cur = new ReceivingItem(name, mime, h.totalSize, h.itemType);
-                        emitProgress(false, name, h.totalSize, 0, cur.started, cur.itemType, recvBatchId);
+                        cur = new ReceivingItem(name, mime, h.totalSize, h.itemType, fi, fc);
+                        emitProgress(false, name, h.totalSize, 0, cur.started, cur.itemType, recvBatchId, fi, fc);
                         break;
                     }
 
@@ -317,7 +326,8 @@ public class PeerConnection {
                             int crc = TransferProtocol.crc32(data, 0, data.length);
                             if (crc != h.crc32) { Log.w(TAG, "CRC mismatch"); cur.corrupt = true; }
                             cur.write(data);
-                            emitProgress(false, cur.name, cur.size, cur.received, cur.started, cur.itemType, recvBatchId);
+                            emitProgress(false, cur.name, cur.size, cur.received, cur.started, cur.itemType,
+                                    recvBatchId, cur.fileIndex, cur.fileCount);
                         }
                         break;
                     }
@@ -334,7 +344,11 @@ public class PeerConnection {
                             if (cur.itemType == TransferProtocol.ITEM_VCARD && cur.cardBytes() != null) {
                                 listener.onCardReceived(cur.cardBytes(), cur.name);
                             }
-                            emitDone(false, cur.name, cur.size, cur.itemType, recvBatchId);
+                            // 批次最後一筆 → ALL_DONE（UI 顯示「傳輸完成」）；否則 FILE_DONE。
+                            if (cur.fileCount > 0 && cur.fileIndex >= cur.fileCount - 1)
+                                emitAllDone(false, cur.name, cur.size, cur.itemType, recvBatchId, cur.fileCount);
+                            else
+                                emitDone(false, cur.name, cur.size, cur.itemType, recvBatchId, cur.fileIndex, cur.fileCount);
                             cur = null;
                         }
                         break;
@@ -363,6 +377,7 @@ public class PeerConnection {
         final String name, mime;
         final long size;
         final byte itemType;
+        final int fileIndex, fileCount;
         final long started = System.currentTimeMillis();
         long received = 0;
         boolean corrupt = false;
@@ -372,8 +387,9 @@ public class PeerConnection {
 
         @Nullable byte[] cardBytes() { return cardBuf != null ? cardBuf.toByteArray() : null; }
 
-        ReceivingItem(String name, String mime, long size, byte itemType) {
+        ReceivingItem(String name, String mime, long size, byte itemType, int fileIndex, int fileCount) {
             this.name = name; this.mime = mime; this.size = size; this.itemType = itemType;
+            this.fileIndex = fileIndex; this.fileCount = fileCount;
             if (itemType == TransferProtocol.ITEM_VCARD) cardBuf = new java.io.ByteArrayOutputStream();
             try {
                 ContentResolver cr = context.getContentResolver();
@@ -422,7 +438,7 @@ public class PeerConnection {
     // ══════════════════════════════════════════════════════════
 
     private void emitProgress(boolean sending, String name, long total, long done, long started,
-                              byte itemType, long batchId) {
+                              byte itemType, long batchId, int fileIndex, int fileCount) {
         long speed = 0;
         long elapsed = System.currentTimeMillis() - started;
         if (elapsed > 0) speed = done * 1000L / elapsed;
@@ -430,14 +446,27 @@ public class PeerConnection {
                 .phase(TransferProgress.Phase.TRANSFERRING)
                 .fileName(name).outgoing(sending).itemType(itemType).batchId(batchId)
                 .totalBytes(total).doneBytes(done).speedBps(speed)
+                .fileIndex(fileIndex).fileCount(fileCount)
                 .build());
     }
 
-    private void emitDone(boolean sending, String name, long size, byte itemType, long batchId) {
+    private void emitDone(boolean sending, String name, long size, byte itemType, long batchId,
+                          int fileIndex, int fileCount) {
         progressLd.postValue(new TransferProgress.Builder()
                 .phase(TransferProgress.Phase.FILE_DONE)
                 .fileName(name).outgoing(sending).itemType(itemType).batchId(batchId)
                 .totalBytes(size).doneBytes(size)
+                .fileIndex(fileIndex).fileCount(fileCount)
+                .build());
+    }
+
+    /** 整批最後一筆完成 → ALL_DONE，UI 據此顯示「傳輸完成」。 */
+    private void emitAllDone(boolean sending, String name, long size, byte itemType, long batchId, int count) {
+        progressLd.postValue(new TransferProgress.Builder()
+                .phase(TransferProgress.Phase.ALL_DONE)
+                .fileName(name).outgoing(sending).itemType(itemType).batchId(batchId)
+                .totalBytes(size).doneBytes(size)
+                .fileIndex(Math.max(0, count - 1)).fileCount(count)
                 .build());
     }
 

@@ -42,7 +42,12 @@
     <!-- 前景 Service（傳輸通知）-->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <!-- connectedDevice：對「連線到外部裝置（Wi-Fi Direct）」更貼切，且不受 dataSync 逾時限制，
+         OEM（MIUI/Samsung）也較不會在 App 短暫退到背景時立刻把前景服務殺掉。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- 傳輸期間保持 CPU 喚醒，避免背景時被節流中斷 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
     <!-- 媒體存取（Scoped Storage, API 33+）-->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
@@ -93,7 +98,7 @@
         <service
             android:name=".transfer.FileTransferService"
             android:exported="false"
-            android:foregroundServiceType="dataSync"/>
+            android:foregroundServiceType="connectedDevice|dataSync"/>
 
     </application>
 

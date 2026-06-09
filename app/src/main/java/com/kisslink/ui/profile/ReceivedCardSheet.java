@@ -59,6 +59,18 @@ public class ReceivedCardSheet extends DialogFragment {
         TextView tvName = v.findViewById(R.id.tvName);
         tvName.setText(p.name.isEmpty() ? "—" : p.name);
 
+        // 名片頭像（隨 vCard PHOTO 攜帶）；無則維持預設圖示。
+        com.google.android.material.imageview.ShapeableImageView ivAvatar =
+                v.findViewById(R.id.ivCardAvatar);
+        if (p.photo != null && p.photo.length > 0) {
+            android.graphics.Bitmap bm = android.graphics.BitmapFactory
+                    .decodeByteArray(p.photo, 0, p.photo.length);
+            if (bm != null) {
+                ivAvatar.setPadding(0, 0, 0, 0);
+                ivAvatar.setImageBitmap(bm);
+            }
+        }
+
         ViewGroup container = v.findViewById(R.id.fieldsContainer);
         for (Profile.Field f : p.fields) {
             if (f.value == null || f.value.trim().isEmpty()) continue;

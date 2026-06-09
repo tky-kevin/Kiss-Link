@@ -22,6 +22,8 @@ public final class Profile {
 
     @NonNull public String name;
     @NonNull public final List<Field> fields;
+    /** 名片頭像（JPEG/PNG bytes，可為 null）——隨 vCard 以 PHOTO 欄位攜帶，供接收端顯示。 */
+    @androidx.annotation.Nullable public byte[] photo;
 
     public Profile(@NonNull String name, @NonNull List<Field> fields) {
         this.name = name;
@@ -72,6 +74,11 @@ public final class Profile {
         if (!notes.isEmpty()) {
             sb.append("NOTE:").append(escape(String.join(" | ", notes))).append("\r\n");
         }
+        if (photo != null && photo.length > 0) {
+            // vCard 3.0 內嵌頭像（base64，單行不折行以便自家解析）。
+            String b64 = android.util.Base64.encodeToString(photo, android.util.Base64.NO_WRAP);
+            sb.append("PHOTO;ENCODING=b;TYPE=JPEG:").append(b64).append("\r\n");
+        }
         sb.append("END:VCARD\r\n");
         return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
@@ -99,6 +106,9 @@ public final class Profile {
             if (val.isEmpty()) continue;
             if (key.equals("FN")) {
                 p.name = val;
+            } else if (key.startsWith("PHOTO")) {
+                try { p.photo = android.util.Base64.decode(val, android.util.Base64.DEFAULT); }
+                catch (Exception ignored) {}
             } else if (key.startsWith("TEL")) {
                 p.fields.add(new Field("電話", val));
             } else if (key.startsWith("EMAIL")) {

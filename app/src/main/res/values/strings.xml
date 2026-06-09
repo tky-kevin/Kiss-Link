@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">KissLink</string>
+    <string name="app_name">安卓抓普</string>
 
     <!-- 頂列 -->
     <string name="cd_history">傳輸紀錄</string>
@@ -8,21 +8,22 @@
     <string name="btn_cancel">關閉</string>
 
     <!-- 中央狀態文案 -->
-    <string name="home_ready_title">輕碰背面，連接</string>
+    <string name="home_ready_title">背對背輕貼　即刻連接</string>
     <string name="home_ready_sub">把兩支手機背靠背貼一下</string>
     <string name="home_connecting_title">連線中</string>
     <string name="home_connected_title">已連線</string>
+    <string name="home_connected_to">已連線至 %1$s</string>
     <string name="home_resetting_title">重整連線…</string>
 
-    <!-- 連線階段（下方序列） -->
-    <string name="stage_nfc">NFC 配對</string>
-    <string name="stage_ble">建立安全通道</string>
-    <string name="stage_wifi">Wi-Fi Direct 連線</string>
+    <!-- 連線階段（作為連線中的大字標題） -->
+    <string name="stage_nfc">建立NFC連線</string>
+    <string name="stage_ble">建立BLE連線</string>
+    <string name="stage_wifi">建立Wi-Fi Direct連線</string>
 
     <!-- 內容選擇 / 傳送 -->
     <string name="pick_files">選檔案</string>
     <string name="pick_media">相片影片</string>
-    <string name="send_card">傳送名片</string>
+    <string name="send_card">傳送</string>
     <string name="btn_send_n">傳送 %1$d 個項目</string>
     <string name="btn_clear">清除</string>
     <string name="sending">傳送中</string>
@@ -47,7 +48,7 @@
     <string name="batch_title">本次接收</string>
 
     <!-- 名片（接收 / 預設人設） -->
-    <string name="default_name">漫遊者</string>
+    <string name="default_name">探索者</string>
     <string name="card_received_title">收到名片</string>
     <string name="card_save_contact">儲存到聯絡人</string>
     <string name="card_of">%1$s的名片</string>
@@ -62,4 +63,14 @@
     <!-- 其它 -->
     <string name="need_perms">需要 Wi-Fi、藍牙與檔案權限才能使用</string>
     <string name="tap_to_connect_first">先碰一下連接，再傳送</string>
+
+    <!-- 手動斷線 / 名片排隊 -->
+    <string name="disconnect_title">中斷連線？</string>
+    <string name="disconnect_msg">將結束與對方的連線，需要時可再次背貼重連。</string>
+    <string name="disconnect_confirm">中斷連線</string>
+    <string name="card_queued">尚未連線，連上後會自動傳送名片</string>
+
+    <!-- 待傳清單 -->
+    <string name="send_stack_label">%1$d 個待傳項目</string>
+    <string name="send_sheet_title">待傳項目</string>
 </resources>

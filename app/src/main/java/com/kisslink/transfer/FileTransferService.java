@@ -110,6 +110,23 @@ public class FileTransferService extends Service {
 
     private final TransferBinder binder = new TransferBinder();
 
+    /** 連線/傳輸期間持有，避免背景時 CPU 被節流導致 socket 中斷。 */
+    @Nullable private android.os.PowerManager.WakeLock wakeLock;
+
+    private void acquireWakeLock() {
+        if (wakeLock == null) {
+            android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
+            if (pm == null) return;
+            wakeLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "KissLink:transfer");
+            wakeLock.setReferenceCounted(false);
+        }
+        if (!wakeLock.isHeld()) wakeLock.acquire(10 * 60 * 1000L); // 上限 10 分鐘，避免洩漏
+    }
+
+    private void releaseWakeLock() {
+        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
+    }
+
     // ══════════════════════════════════════════════════════════
     //  Intent Factory（角色中立）
     // ══════════════════════════════════════════════════════════
@@ -160,6 +177,22 @@ public class FileTransferService extends Service {
         public void cancel() {
             teardownPeer();
             stopSelf();
+        }
+
+        /**
+         * 使用者手動中斷連線：走與「對方自然斷線」相同的輕量路徑（只拆 peer、回 IDLE），
+         * 不在此清 HCE token／重置 coordinator／拆 Wi-Fi 群組——那些交給下一次 latch 的
+         * proceedWithLatch（dirty 重建）處理。如此手動斷線後的重新配對與自然斷線完全一致，可正常重連。
+         */
+        public void disconnect() {
+            mainHandler.post(() -> {
+                connectedPeerToken = null;
+                peerNameFromHello = null;
+                peerAvatarBytes = null;
+                transferring = false;
+                teardownPeer();
+                sessionLd.setValue(SessionState.idle());
+            });
         }
     }
 
@@ -214,7 +247,14 @@ public class FileTransferService extends Service {
         mainHandler.removeCallbacksAndMessages(null); // 取消尚未觸發的重置重建
         teardownPeer();
         if (coordinator != null) coordinator.reset();
-        if (wifi != null) { wifi.unregisterReceiver(this); wifi.reset(); }
+        if (wifi != null) {
+            // 服務結束（滑掉 App / 閒置自動拆除 / stopSelf）→ 主動移除 Wi-Fi Direct 群組，
+            // 立即釋放 SoftAP，不再殘留到下次啟動才清。removeGroup 為非同步盡力而為。
+            wifi.removeGroup();
+            wifi.unregisterReceiver(this);
+            wifi.reset();
+        }
+        releaseWakeLock();
         KissLinkHCEService.clearToken();
         Log.d(TAG, "FileTransferService destroyed");
     }
@@ -475,6 +515,7 @@ public class FileTransferService extends Service {
         });
 
         peer.start();
+        acquireWakeLock();
         updateNotification("已連線", 0);
         sessionLd.postValue(SessionState.of(SessionState.Phase.CONNECTED));
         Log.i(TAG, "PeerConnection established (groupOwner=" + isGroupOwner + ")");
@@ -497,6 +538,7 @@ public class FileTransferService extends Service {
         peerProgressSrc = null;
         peerProgressObs = null;
         if (peer != null) { peer.close(); peer = null; }
+        releaseWakeLock();
     }
 
     // ══════════════════════════════════════════════════════════

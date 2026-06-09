@@ -14,6 +14,7 @@ import android.os.Looper;
 import android.util.Log;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -68,14 +69,19 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
 
     // ── Views ──
     private BeamStageView beam;
-    private TextView   tvHeadline, tvSub, tvPercent, tvReceived;
+    private TextView   tvHeadline, tvSub, tvPercent, tvReceived, tvStackLabel;
     private LinearLayout percentRow, receivedBanner;
-    private RecyclerView rvItems;
+    private View sendStackRow;
+    private android.widget.FrameLayout stackThumbs;
     private MaterialButton btnPickFiles, btnPickMedia, btnSend, btnViewReceived;
     private ImageButton ibHistory;
     private ShapeableImageView ivAvatar;
 
     private SendListAdapter itemsAdapter;
+    @Nullable private com.google.android.material.bottomsheet.BottomSheetDialog sendSheet;
+
+    // #1：未連線時按傳送名片 → 排隊，連上後自動送出
+    private boolean pendingCardSend = false;
 
     // ── Service ──
     @Nullable private FileTransferService.TransferBinder binder;
@@ -157,7 +163,9 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
         tvSub       = findViewById(R.id.tvSub);
         tvPercent   = findViewById(R.id.tvPercent);
         percentRow  = findViewById(R.id.percentRow);
-        rvItems     = findViewById(R.id.rvItems);
+        sendStackRow= findViewById(R.id.sendStackRow);
+        stackThumbs = findViewById(R.id.stackThumbs);
+        tvStackLabel= findViewById(R.id.tvStackLabel);
         btnPickFiles= findViewById(R.id.btnPickFiles);
         btnPickMedia= findViewById(R.id.btnPickMedia);
         btnSend     = findViewById(R.id.btnSend);
@@ -168,12 +176,11 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
         btnViewReceived= findViewById(R.id.btnViewReceived);
 
         itemsAdapter = new SendListAdapter();
-        rvItems.setLayoutManager(new LinearLayoutManager(this));
-        rvItems.setAdapter(itemsAdapter);
-        rvItems.setNestedScrollingEnabled(true);
-        rvItems.setLayoutAnimation(android.view.animation.AnimationUtils
-                .loadLayoutAnimation(this, R.anim.layout_anim_fade_up));
         itemsAdapter.setOnRemove(this::removeSelection);
+        sendStackRow.setOnClickListener(v -> showSendSheet());
+
+        // #9：點「已連線至 xxx」可手動斷線
+        tvHeadline.setOnClickListener(v -> onHeadlineTapped());
 
         btnViewReceived.setOnClickListener(v -> {
             if (recvBatchId != 0)
@@ -321,18 +328,18 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
             case HOSTING:
             case CONNECTING:
                 beam.setPhase(BeamStageView.CONNECTING);
-                showHeadlineText(getString(R.string.home_connecting_title), null);
-                runStageTicker(p);
+                runStageTicker(p);   // #8：連線階段名稱直接作為大字標題（無小字）
                 break;
 
             case CONNECTED:
                 stopStageTicker();
                 beam.setPhase(BeamStageView.CONNECTED);
                 showPeerIdentity();
-                showHeadlineText(getString(R.string.home_connected_title), peerSubLabel());
+                showHeadlineText(connectedHeadline(), "");   // #8：已連線至 xxx
                 if (nfc != null) nfc.resetLatched(); // 連上後仍可再碰（同對象 resume / 新對象切換）
                 updateSendButton();
-                rebuildIdleRows();
+                rebuildSendStack();
+                if (pendingCardSend) { pendingCardSend = false; main.post(this::sendMyProfileCard); } // #1
                 break;
 
             case TRANSFERRING:
@@ -364,11 +371,11 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
         beam.setSelfAvatar(ProfileStore.get(this).loadAvatar());
         beam.setPeerIdentity(null);
         beam.setPeerAvatar(null);
-        showHeadlineText(getString(R.string.home_ready_title), getString(R.string.home_ready_sub));
+        showHeadlineText(getString(R.string.home_ready_title), "");   // #8：去掉小字
         hideReceivedBanner();
         recvBatchId = 0; recvCount = 0;
         updateSendButton();
-        rebuildIdleRows();
+        rebuildSendStack();
     }
 
     // ── 連線階段序列器 ──
@@ -393,7 +400,8 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
             if (!stageRunning) return;
             if (stageShown < stageTarget) {
                 stageShown++;
-                tvSub.setText(stageLabel(stageShown));
+                // #8：階段名稱作為大字標題（無小字）
+                showHeadlineText(stageLabel(stageShown), "");
             }
             main.postDelayed(this, STAGE_MIN_DWELL_MS);
         }
@@ -441,11 +449,11 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
         boolean outgoing = tp.outgoing;
         beam.setDirection(outgoing ? BeamStageView.SEND : BeamStageView.RECEIVE);
         beam.setPhase(BeamStageView.TRANSFERRING);
-        int pct = tp.percentInt();
-        beam.setProgress(pct >= 0 ? pct / 100f : 0f);
-        showPercent(pct);
-        tvSub.setText((outgoing ? getString(R.string.sending) : getString(R.string.receiving))
-                + " · " + tp.fileName);
+        beam.setProgress(batchProgress(tp));   // #3：整包進度
+        // 傳輸速度顯示在 headline（取代「已連線」字樣），頭像上不放數字
+        showTransferHeadline(speedLabelInt(tp.speedBps),
+                (outgoing ? getString(R.string.sending) : getString(R.string.receiving))
+                        + " · " + tp.fileName);
         if (outgoing) {
             if (tp.itemType != TransferProtocol.ITEM_VCARD) updateOutgoingRows(tp, false);
         } else {
@@ -455,30 +463,39 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
     }
 
     private void onTransferDone(@Nullable TransferProgress tp, boolean all) {
+        boolean outgoing = tp != null && tp.outgoing;
+        boolean isVcard = tp != null && tp.itemType == TransferProtocol.ITEM_VCARD;
+
+        // #3：多檔的「中間檔」（FILE_DONE，尚未到最後一筆）→ 維持傳輸視覺，只推進整包進度（雙向皆同）
+        if (!isVcard && !all && tp != null && tp.fileCount > 1) {
+            beam.setPhase(BeamStageView.TRANSFERRING);
+            beam.setProgress(batchProgress(tp));
+            if (outgoing) updateOutgoingRows(tp, true);
+            else countReceived(tp);
+            return;
+        }
+
+        // 其餘 → 顯示完成（最後一筆 ALL_DONE / 名片 / 單檔）
         beam.setPhase(BeamStageView.DONE);
         beam.setProgress(1f);
-        boolean outgoing = tp != null && tp.outgoing;
         hidePercent();
         String peer = binder != null ? binder.connectedPeerName() : null;
         String who = peer != null ? peer : "對方";
-        showHeadlineText(getString(R.string.home_connected_title),
+        showHeadlineText("傳輸完成",
                 outgoing ? getString(R.string.sent_to, who) : getString(R.string.received_from, who));
 
-        if (outgoing && tp != null && tp.itemType == TransferProtocol.ITEM_VCARD) {
+        if (isVcard) {
             // 名片獨立傳送，不影響待傳清單
         } else if (outgoing) {
             updateOutgoingRows(tp, true);
-            if (outgoingRemaining > 0) outgoingRemaining--;
-            if (outgoingRemaining <= 0 && !selection.isEmpty()) {
-                // 整批傳完 → 清空待傳清單
-                selection.clear();
-                outgoingNames.clear();
-                rebuildIdleRows();
-            }
+            // 整批傳完 → 清空待傳清單
+            selection.clear();
+            outgoingNames.clear();
+            outgoingRemaining = 0;
+            rebuildSendStack();
+            if (sendSheet != null && sendSheet.isShowing()) sendSheet.dismiss();
         } else if (tp != null) {
-            if (tp.batchId != recvBatchId) { recvBatchId = tp.batchId; recvCount = 0; }
-            recvCount++;
-            showReceivedBanner(recvCount);
+            countReceived(tp);
         }
 
         // 短暫顯示完成後回到「已連線」可再選
@@ -489,6 +506,37 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
             }
         }, 1400);
         updateSendButton();
+    }
+
+    // 進度單調化（杜絕回退）：傳送多檔 → 整包單調；接收/單檔 → 每檔單調
+    private long   progBatchId = Long.MIN_VALUE;
+    private String progFile    = "";
+    private float  progShown   = 0f;
+
+    /**
+     * 進度 0..1，同段內單調不回退。
+     * 傳送多檔（fileCount>1）→ (已完成檔數 + 當前檔比例)/總檔數，整包進度；
+     * 接收或單檔（fileCount≤1）→ 當前檔比例（換檔時重置）。
+     */
+    private float batchProgress(@NonNull TransferProgress tp) {
+        boolean wholeBatch = tp.fileCount > 1;
+        boolean newBatch = tp.batchId != progBatchId;
+        boolean newFile = !tp.fileName.equals(progFile);
+        if (newBatch || (!wholeBatch && newFile)) { progBatchId = tp.batchId; progShown = 0f; }
+        progFile = tp.fileName;
+        int pct = tp.percentInt();
+        float frac = pct >= 0 ? pct / 100f : 0f;
+        int count = Math.max(1, tp.fileCount);
+        float raw = Math.min(1f, (tp.fileIndex + frac) / count);
+        if (raw > progShown) progShown = raw;
+        return progShown;
+    }
+
+    /** 接收方：累計本批收到的項目數並更新橫幅。 */
+    private void countReceived(@NonNull TransferProgress tp) {
+        if (tp.batchId != recvBatchId) { recvBatchId = tp.batchId; recvCount = 0; }
+        recvCount++;
+        showReceivedBanner(recvCount);
     }
 
     private void showReceivedBanner(int count) {
@@ -502,13 +550,8 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
 
     // ── 內容選擇 / 傳送 ──
     private void onSelectionChanged() {
-        rebuildIdleRows();
+        rebuildSendStack();
         updateSendButton();
-        if (isConnected() && !selection.isEmpty()) {
-            tvSub.setText(selection.size() + " 個項目待傳送");
-        } else if (!selection.isEmpty()) {
-            tvSub.setText(selection.size() + " 個項目 · " + getString(R.string.tap_to_connect_first));
-        }
     }
 
     private void removeSelection(int position) {
@@ -544,8 +587,9 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
                 || lastPhase == SessionState.Phase.ALL_DONE;
     }
 
-    // ── 清單 ──
-    private void rebuildIdleRows() {
+    // ── 待傳清單（疊起來 + 彈出）#2 ──
+    private void rebuildSendStack() {
+        // adapter 內容（供彈出清單）
         List<SendRow> rows = new ArrayList<>();
         for (SendItem it : selection) {
             SendRow r = new SendRow(it.name, sizeLabel(it.size), it.itemType,
@@ -554,7 +598,102 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
             rows.add(r);
         }
         itemsAdapter.submit(rows);
-        if (!rows.isEmpty()) rvItems.scheduleLayoutAnimation();
+
+        // 底部疊起來的摘要
+        if (selection.isEmpty()) {
+            sendStackRow.setVisibility(View.GONE);
+            if (sendSheet != null && sendSheet.isShowing()) sendSheet.dismiss();
+            return;
+        }
+        tvStackLabel.setText(getString(R.string.send_stack_label, selection.size()));
+        buildStackThumbs();
+        if (sendStackRow.getVisibility() != View.VISIBLE) {
+            sendStackRow.setVisibility(View.VISIBLE);
+            Anim.fadeUp(sendStackRow);
+        }
+    }
+
+    /** 疊起來的縮圖（最多 3 個，往右錯開重疊）。 */
+    private void buildStackThumbs() {
+        stackThumbs.removeAllViews();
+        float d = getResources().getDisplayMetrics().density;
+        int sizePx = Math.round(40 * d);
+        int stepPx = Math.round(22 * d);
+        int pad = Math.round(9 * d);
+        int max = Math.min(3, selection.size());
+        for (int i = 0; i < max; i++) {
+            SendItem it = selection.get(i);
+            ShapeableImageView iv = new ShapeableImageView(this);
+            android.widget.FrameLayout.LayoutParams lp =
+                    new android.widget.FrameLayout.LayoutParams(sizePx, sizePx);
+            lp.leftMargin = i * stepPx;
+            iv.setLayoutParams(lp);
+            iv.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
+            iv.setPadding(pad, pad, pad, pad);
+            iv.setImageResource(iconFor(it.itemType));
+            stackThumbs.addView(iv);
+        }
+    }
+
+    /** 點擊摘要 → 彈出完整可移除清單。 */
+    private void showSendSheet() {
+        if (selection.isEmpty()) return;
+        float d = getResources().getDisplayMetrics().density;
+        com.google.android.material.bottomsheet.BottomSheetDialog dlg =
+                new com.google.android.material.bottomsheet.BottomSheetDialog(this);
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        int pad = Math.round(20 * d);
+        content.setPadding(pad, pad, pad, Math.round(8 * d));
+
+        TextView title = new TextView(this);
+        title.setText(R.string.send_sheet_title);
+        title.setTextColor(getColor(R.color.beam_ink));
+        title.setTextSize(18);
+        title.setTypeface(title.getTypeface(), android.graphics.Typeface.BOLD);
+        content.addView(title);
+
+        RecyclerView rv = new RecyclerView(this);
+        rv.setLayoutManager(new LinearLayoutManager(this));
+        rv.setAdapter(itemsAdapter);
+        LinearLayout.LayoutParams rvlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rvlp.topMargin = Math.round(10 * d);
+        rv.setLayoutParams(rvlp);
+        content.addView(rv);
+
+        dlg.setContentView(content);
+        dlg.setOnDismissListener(x -> { rv.setAdapter(null); sendSheet = null; });
+        sendSheet = dlg;
+        dlg.show();
+    }
+
+    /** #9：點「已連線至 xxx」→ 確認後手動斷線。 */
+    private void onHeadlineTapped() {
+        if (!isConnected() || binder == null) return;
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle(R.string.disconnect_title)
+                .setMessage(R.string.disconnect_msg)
+                .setNegativeButton(R.string.btn_cancel, null)
+                .setPositiveButton(R.string.disconnect_confirm, (dd, w) -> {
+                    if (binder != null) binder.disconnect();
+                })
+                .show();
+    }
+
+    private String connectedHeadline() {
+        String peer = binder != null ? binder.connectedPeerName() : null;
+        return peer != null ? getString(R.string.home_connected_to, peer)
+                            : getString(R.string.home_connected_title);
+    }
+
+    private static int iconFor(byte t) {
+        switch (t) {
+            case TransferProtocol.ITEM_PHOTO: return R.drawable.ic_image;
+            case TransferProtocol.ITEM_VCARD: return R.drawable.ic_person;
+            default: return R.drawable.ic_file;
+        }
     }
 
     /** 傳送中：以待傳清單為基底，更新對應列的進度/完成（接收端改用收到橫幅，不進清單）。 */
@@ -590,6 +729,22 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
         tvHeadline.setVisibility(View.INVISIBLE);
         percentRow.setVisibility(View.VISIBLE);
         tvPercent.setText(pct >= 0 ? String.valueOf(pct) : "0");
+    }
+
+    /** 傳輸中：headline 直接顯示速度（取代「已連線」）。頻繁更新故不套淡入動畫，避免閃爍。 */
+    private void showTransferHeadline(String speed, @Nullable String sub) {
+        percentRow.setVisibility(View.GONE);
+        tvHeadline.setVisibility(View.VISIBLE);
+        tvHeadline.setText(speed);
+        if (sub != null) tvSub.setText(sub);
+    }
+
+    /** 速度字串，顯示到整數位（例如「12 MB/s」）。 */
+    private static String speedLabelInt(long bps) {
+        if (bps < 0) bps = 0;
+        if (bps >= 1024L * 1024) return Math.round(bps / (1024.0 * 1024)) + " MB/s";
+        if (bps >= 1024) return Math.round(bps / 1024.0) + " KB/s";
+        return bps + " B/s";
     }
 
     private void hidePercent() {
@@ -654,17 +809,22 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
     @Override
     public void sendMyProfileCard() {
         if (binder == null || !isConnected()) {
-            toast(getString(R.string.tap_to_connect_first));
+            // #1：尚未連線 → 排隊，連上後自動送出
+            pendingCardSend = true;
+            toast(getString(R.string.card_queued));
             return;
         }
         ProfileStore ps = ProfileStore.get(this);
         Profile p = ps.load();
+        if (p.name == null || p.name.trim().isEmpty()) p.name = ps.name(); // #11：套用預設名（探索者）
+        p.photo = ps.avatarThumbBytes();                                   // #10：頭像隨名片送
         String fileName = getString(R.string.card_of, ps.name());
         SendItem card = SendItem.vcard(fileName, p.toVCard());
         List<SendItem> one = new ArrayList<>();
         one.add(card);
         // 名片獨立傳送，不動待傳清單（不計入 outgoingRemaining）
         binder.sendItems(one);
+        beam.playCardFly();   // #14：名片縮入對方頭像的 genie 動畫
         haptic();
     }
 }
