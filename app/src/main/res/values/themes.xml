@@ -11,6 +11,7 @@
         <item name="colorError">@color/notion_error</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>
+        <item name="android:navigationBarColor">@color/notion_surface</item>
         <item name="android:fontFamily">sans-serif</item>
     </style>
 

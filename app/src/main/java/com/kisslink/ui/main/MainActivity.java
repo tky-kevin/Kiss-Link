@@ -76,7 +76,6 @@ public class MainActivity extends AppCompatActivity {
         btnProfile.setOnClickListener(v  -> startActivity(new Intent(this, SettingsActivity.class)));
 
         headerCard.setOnClickListener(v -> showCardOverlay());
-
         if (!PermissionHelper.hasPermissions(this)) {
             PermissionHelper.requestPermissions(this);
         }

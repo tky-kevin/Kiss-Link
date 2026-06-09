@@ -5,6 +5,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -12,7 +13,7 @@ import android.os.IBinder;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.FrameLayout;
+import android.view.Window;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -21,6 +22,9 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
@@ -169,6 +173,14 @@ public class TransferBottomSheet extends BottomSheetDialogFragment {
         rootView = inflater.inflate(R.layout.bottom_sheet_transfer, container, false);
         bindViews();
         setupUi();
+
+        // 處理系統導覽列縮排，避免底部出現黑條
+        ViewCompat.setOnApplyWindowInsetsListener(rootView, (v, insets) -> {
+            int bottom = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom;
+            v.setPadding(v.getPaddingLeft(), v.getPaddingTop(), v.getPaddingRight(), bottom);
+            return insets;
+        });
+
         return rootView;
     }
 
@@ -179,19 +191,33 @@ public class TransferBottomSheet extends BottomSheetDialogFragment {
         // ── BottomSheet 行為設定 ──────────────────────────────
         BottomSheetDialog dialog = (BottomSheetDialog) getDialog();
         if (dialog != null) {
-            BottomSheetBehavior<FrameLayout> behavior = dialog.getBehavior();
-            behavior.setSkipCollapsed(true);
-            behavior.setHalfExpandedRatio(0.5f);
-            behavior.setState(BottomSheetBehavior.STATE_HALF_EXPANDED);
-            behavior.setDraggable(true);
-            behavior.addBottomSheetCallback(new BottomSheetBehavior.BottomSheetCallback() {
-                @Override
-                public void onStateChanged(@NonNull View v, int state) {
-                    if (state == BottomSheetBehavior.STATE_HIDDEN) dismiss();
-                }
-                @Override
-                public void onSlide(@NonNull View v, float offset) {}
-            });
+            // 核心 1：讓 Window 內容延伸到系統欄位 (Edge-to-Edge)
+            Window window = dialog.getWindow();
+            if (window != null) {
+                window.setNavigationBarColor(Color.TRANSPARENT);
+                WindowCompat.setDecorFitsSystemWindows(window, false);
+            }
+
+            // 核心 2：處理底層容器背景與狀態
+            View bottomSheet = dialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
+            if (bottomSheet != null) {
+                bottomSheet.setBackgroundResource(android.R.color.transparent);
+                
+                BottomSheetBehavior<View> behavior = BottomSheetBehavior.from(bottomSheet);
+                behavior.setSkipCollapsed(true);
+                // 設為 EXPANDED 確保一開啟就顯示完整高度，避免計算誤差
+                behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
+                behavior.setDraggable(true);
+                
+                behavior.addBottomSheetCallback(new BottomSheetBehavior.BottomSheetCallback() {
+                    @Override
+                    public void onStateChanged(@NonNull View v, int state) {
+                        if (state == BottomSheetBehavior.STATE_HIDDEN) dismiss();
+                    }
+                    @Override
+                    public void onSlide(@NonNull View v, float offset) {}
+                });
+            }
         }
 
         // ── 啟動 Service ──────────────────────────────────────
