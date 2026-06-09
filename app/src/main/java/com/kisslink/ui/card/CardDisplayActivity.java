@@ -2,6 +2,7 @@ package com.kisslink.ui.card;
 
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -10,6 +11,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
+import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -56,7 +58,8 @@ public class CardDisplayActivity extends AppCompatActivity {
             finish(); // 儲存後回主頁，blur 解除
         });
 
-        findViewById(R.id.btnDisplayBack).setOnClickListener(v -> finish());
+        ImageButton btnClose = findViewById(R.id.btnDisplayClose);
+        if (btnClose != null) btnClose.setOnClickListener(v -> finish());
 
         playCardDropEntry();
 
@@ -101,14 +104,20 @@ public class CardDisplayActivity extends AppCompatActivity {
             }
         }
 
-        // 頭像
+        // 頭像：優先 avatarUri → thumbnailBytes → placeholder
         ShapeableImageView ivAvatar = findViewById(R.id.ivCardAvatar);
         if (ivAvatar != null) {
             String avatarUri = card.getAvatarUri();
             if (avatarUri != null && !avatarUri.isEmpty()) {
                 ivAvatar.setImageURI(Uri.parse(avatarUri));
             } else {
-                ivAvatar.setImageResource(R.drawable.avatar_placeholder);
+                byte[] thumb = card.getThumbnailBytes();
+                if (thumb != null && thumb.length > 0) {
+                    android.graphics.Bitmap bmp = BitmapFactory.decodeByteArray(thumb, 0, thumb.length);
+                    ivAvatar.setImageBitmap(bmp);
+                } else {
+                    ivAvatar.setImageResource(R.drawable.avatar_placeholder);
+                }
             }
         }
 

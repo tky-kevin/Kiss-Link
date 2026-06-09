@@ -48,6 +48,10 @@ public final class NFCCredential {
             putIfNotEmpty(json, "li", card.getLineId());
             putIfNotEmpty(json, "sc", card.getSchool());
             putIfNotEmpty(json, "mj", card.getMajor());
+            if (card.getThumbnailBytes() != null && card.getThumbnailBytes().length > 0) {
+                json.put("av", android.util.Base64.encodeToString(
+                    card.getThumbnailBytes(), android.util.Base64.NO_WRAP));
+            }
             return json.toString().getBytes(StandardCharsets.UTF_8);
         } catch (JSONException e) {
             throw new RuntimeException("NFCCredential card serialization error", e);
@@ -80,7 +84,7 @@ public final class NFCCredential {
     public static BusinessCard cardFromBytes(byte[] bytes) {
         try {
             JSONObject o = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
-            return new BusinessCard(
+            BusinessCard card = new BusinessCard(
                     o.optString("n",  ""),
                     o.optString("b",  ""),
                     null,
@@ -89,6 +93,13 @@ public final class NFCCredential {
                     o.optString("sc", ""),
                     o.optString("mj", "")
             );
+            String avBase64 = o.optString("av", null);
+            if (avBase64 != null && !avBase64.isEmpty()) {
+                try {
+                    card.setThumbnailBytes(android.util.Base64.decode(avBase64, android.util.Base64.NO_WRAP));
+                } catch (Exception ignored) {}
+            }
+            return card;
         } catch (JSONException e) {
             throw new IllegalArgumentException("NFCCredential card parse error: " + e.getMessage(), e);
         }

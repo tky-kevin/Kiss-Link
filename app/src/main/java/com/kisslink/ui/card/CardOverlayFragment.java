@@ -269,16 +269,50 @@ public class CardOverlayFragment extends DialogFragment {
         btnShare.setEnabled(false);
         btnShare.setText("靠近對方手機中...");
 
-        // 輕微左右晃動（一直持續到 NFC 完成）
+        // 輕微左右晃動（立即開始，不等頭像載入）
         startSwayAnimation();
-
-        // 設定 HCE
-        BusinessCard card = UserProfileRepository.getInstance(requireContext()).getBusinessCard();
-        KissLinkHCEService.setBusinessCard(card);
 
         // NFC 送達回調
         KissLinkHCEService.setOnCardDeliveredCallback(() -> {
             if (isAdded()) requireActivity().runOnUiThread(this::onCardDelivered);
+        });
+
+        // 載入縮圖後再設 HCE
+        BusinessCard card = UserProfileRepository.getInstance(requireContext()).getBusinessCard();
+        loadThumbnailAndSetHce(card);
+    }
+
+    private void loadThumbnailAndSetHce(BusinessCard card) {
+        // 取頭像 URI
+        String avatarUri = card.getAvatarUri();
+        if (avatarUri == null || avatarUri.isEmpty()) {
+            UserProfile profile = UserProfileRepository.getInstance(requireContext()).getUserProfile();
+            avatarUri = profile != null ? profile.getAvatarUri() : null;
+        }
+        final String finalUri = avatarUri;
+
+        if (finalUri == null || finalUri.isEmpty()) {
+            // 無頭像，直接設 HCE
+            KissLinkHCEService.setBusinessCard(card);
+            return;
+        }
+
+        final java.util.concurrent.ExecutorService exec = java.util.concurrent.Executors.newSingleThreadExecutor();
+        exec.execute(() -> {
+            try {
+                android.net.Uri uri = android.net.Uri.parse(finalUri);
+                android.graphics.Bitmap orig = android.graphics.BitmapFactory.decodeStream(
+                    requireContext().getContentResolver().openInputStream(uri));
+                if (orig != null) {
+                    android.graphics.Bitmap scaled = android.graphics.Bitmap.createScaledBitmap(orig, 50, 50, true);
+                    java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                    scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 15, baos);
+                    card.setThumbnailBytes(baos.toByteArray());
+                }
+            } catch (Exception ignored) {}
+            // 無論成功與否，回主執行緒設 HCE
+            new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+                KissLinkHCEService.setBusinessCard(card));
         });
     }
 

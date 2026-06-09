@@ -81,7 +81,8 @@
         <!-- ── 顯示收到的名片 ─────────────────────────────────── -->
         <activity android:name=".ui.card.CardDisplayActivity"
             android:exported="false"
-            android:label="收到的名片"/>
+            android:label="收到的名片"
+            android:theme="@style/Theme.KissLink.Translucent"/>
 
         <!-- ── 名片分享等待畫面 ───────────────────────────────── -->
         <activity android:name=".ui.card.CardSharingActivity"

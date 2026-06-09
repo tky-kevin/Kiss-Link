@@ -53,4 +53,12 @@
         <item name="cornerSize">50%</item>
     </style>
 
+    <!-- 半透明 Activity（用於 CardDisplayActivity） -->
+    <style name="Theme.KissLink.Translucent" parent="Theme.KissLink.Base">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.75</item>
+    </style>
+
 </resources>

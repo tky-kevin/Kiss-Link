@@ -131,12 +131,21 @@ public final class TransferProtocol {
     //  Header Factory Methods
     // ══════════════════════════════════════════════════════════
 
-    public static Header makeHandshake() {
-        Header h = new Header(); h.type = TYPE_HANDSHAKE; return h;
+    public static Header makeHandshake(int nameLen) {
+        Header h = new Header();
+        h.type = TYPE_HANDSHAKE;
+        h.metaLen = (short) nameLen;
+        return h;
     }
-    public static Header makeHandshakeAck() {
-        Header h = new Header(); h.type = TYPE_HANDSHAKE_ACK; return h;
+    public static Header makeHandshakeAck(int nameLen) {
+        Header h = new Header();
+        h.type = TYPE_HANDSHAKE_ACK;
+        h.metaLen = (short) nameLen;
+        return h;
     }
+    // 保留舊的無參數版本（傳 0）以免破壞其他可能呼叫點
+    public static Header makeHandshake() { return makeHandshake(0); }
+    public static Header makeHandshakeAck() { return makeHandshakeAck(0); }
     public static Header makeFileMeta(int fileId, int fileCount, long totalSize, int metaLen) {
         Header h = new Header();
         h.type = TYPE_FILE_META;

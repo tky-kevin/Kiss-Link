@@ -12,6 +12,7 @@ public class BusinessCard implements Parcelable {
     private String lineId;
     private String school;
     private String major;
+    private byte[] thumbnailBytes;
 
     public BusinessCard() {}
 
@@ -34,6 +35,7 @@ public class BusinessCard implements Parcelable {
         lineId    = in.readString();
         school    = in.readString();
         major     = in.readString();
+        thumbnailBytes = in.createByteArray();
     }
 
     public static final Creator<BusinessCard> CREATOR = new Creator<BusinessCard>() {
@@ -54,6 +56,7 @@ public class BusinessCard implements Parcelable {
         dest.writeString(lineId);
         dest.writeString(school);
         dest.writeString(major);
+        dest.writeByteArray(thumbnailBytes);
     }
 
     public String getName()      { return name; }
@@ -71,6 +74,8 @@ public class BusinessCard implements Parcelable {
     public void setLineId(String lineId)       { this.lineId = lineId; }
     public void setSchool(String school)       { this.school = school; }
     public void setMajor(String major)         { this.major = major; }
+    public byte[] getThumbnailBytes()          { return thumbnailBytes; }
+    public void setThumbnailBytes(byte[] thumbnailBytes) { this.thumbnailBytes = thumbnailBytes; }
 
     public boolean hasName() {
         return name != null && !name.trim().isEmpty();

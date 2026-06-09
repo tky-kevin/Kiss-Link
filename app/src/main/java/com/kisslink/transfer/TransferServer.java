@@ -5,7 +5,6 @@ import android.content.Context;
 import android.net.Uri;
 import android.util.Log;
 
-import androidx.annotation.Nullable;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
@@ -66,13 +65,15 @@ public class TransferServer {
     // 進行中的檔案（供失敗時回報）
     private String curName; private long curSize;
 
+    private String peerName = "";
+    public String getPeerName() { return peerName; }
+
     /** 設定逐檔完成回呼（用於可靠的歷史紀錄，不經會合併的 LiveData）。 */
     public void setEventListener(TransferEventListener l) { this.eventListener = l; }
 
-    private void fireFileCompleted(String name, long size, long speed, boolean success,
-                                   @Nullable String fileUri) {
+    private void fireFileCompleted(String name, long size, long speed, boolean success) {
         TransferEventListener l = eventListener;
-        if (l != null && name != null) l.onFileCompleted(name, size, speed, success, fileUri);
+        if (l != null && name != null) l.onFileCompleted(name, size, speed, success);
     }
 
     private final MutableLiveData<TransferProgress> progressLd =
@@ -141,14 +142,31 @@ public class TransferServer {
     // ══════════════════════════════════════════════════════════
 
     private void doHandshake() throws IOException, TransferProtocol.InvalidPacketException {
-        // 等待 RECEIVER 先發 HANDSHAKE
+        // 讀取 CLIENT 的 HANDSHAKE（含對方名字）
         byte[] hdrBuf = readBytes(TransferProtocol.HEADER_SIZE);
         TransferProtocol.Header h = TransferProtocol.decodeHeader(hdrBuf);
         if (h.type != TransferProtocol.TYPE_HANDSHAKE)
             throw new TransferProtocol.InvalidPacketException("Expected HANDSHAKE, got " + h.type);
-        // 回覆 HANDSHAKE_ACK
-        sendPacket(TransferProtocol.makeHandshakeAck(), null);
-        Log.d(TAG, "Handshake complete");
+
+        // 讀取對方名字 payload
+        int nameLen = h.metaLen & 0xFFFF;
+        if (nameLen > 0) {
+            byte[] nameBytes = readBytes(nameLen);
+            peerName = new String(nameBytes, java.nio.charset.StandardCharsets.UTF_8);
+        }
+
+        // 回傳 HANDSHAKE_ACK，帶上自己的名字
+        String myName = "";
+        try {
+            com.kisslink.data.repository.UserProfileRepository repo =
+                com.kisslink.data.repository.UserProfileRepository.getInstance(context);
+            com.kisslink.model.UserProfile profile = repo.getUserProfile();
+            if (profile != null && profile.getName() != null) myName = profile.getName();
+        } catch (Exception ignored) {}
+
+        byte[] myNameBytes = myName.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        sendPacket(TransferProtocol.makeHandshakeAck(myNameBytes.length), myNameBytes);
+        Log.d(TAG, "Handshake complete, peerName=" + peerName);
     }
 
     // ══════════════════════════════════════════════════════════
@@ -171,7 +189,7 @@ public class TransferServer {
         } catch (IOException | TransferProtocol.InvalidPacketException e) {
             if (!cancelled) {
                 Log.e(TAG, "Send error", e);
-                fireFileCompleted(curName, curSize, 0, false, null); // 進行中的檔案記為失敗
+                fireFileCompleted(curName, curSize, 0, false); // 進行中的檔案記為失敗
                 postProgress(TransferProgress.error("傳送失敗：" + e.getMessage()));
             }
         } finally {
@@ -237,7 +255,7 @@ public class TransferServer {
 
         long elapsed = System.currentTimeMillis() - startMs;
         long avgSpeed = elapsed > 0 ? offset * 1000 / elapsed : 0;
-        fireFileCompleted(name, size, avgSpeed, true, null); // 可靠的逐檔成功回報（sender 沒有 URI）
+        fireFileCompleted(name, size, avgSpeed, true); // 可靠的逐檔成功回報
         curName = null;
 
         postProgress(new TransferProgress.Builder()
