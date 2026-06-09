@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/beam_bg"
+    android:fitsSystemWindows="true">
+
+    <!-- ══ 頂列 ══════════════════════════════════════════════ -->
+    <TextView
+        android:id="@+id/tvWordmark"
+        style="@style/Beam.Wordmark"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/app_name"
+        android:paddingStart="20dp"
+        android:paddingTop="14dp"
+        android:paddingBottom="14dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <com.google.android.material.imageview.ShapeableImageView
+        android:id="@+id/ivAvatar"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_marginEnd="16dp"
+        android:scaleType="centerCrop"
+        android:background="@drawable/bg_avatar"
+        android:src="@drawable/ic_avatar_default"
+        android:padding="7dp"
+        android:contentDescription="@string/cd_avatar"
+        app:strokeColor="@color/beam_track"
+        app:strokeWidth="1.5dp"
+        app:shapeAppearanceOverlay="@style/Beam.Avatar.Circle"
+        app:layout_constraintTop_toTopOf="@id/tvWordmark"
+        app:layout_constraintBottom_toBottomOf="@id/tvWordmark"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <ImageButton
+        android:id="@+id/ibHistory"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_marginEnd="6dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_history"
+        android:scaleType="centerInside"
+        android:contentDescription="@string/cd_history"
+        app:layout_constraintTop_toTopOf="@id/ivAvatar"
+        app:layout_constraintBottom_toBottomOf="@id/ivAvatar"
+        app:layout_constraintEnd_toStartOf="@id/ivAvatar" />
+
+    <!-- ══ 下方面板（headline + 內容 + 按鈕）固定在底，Beam 撐滿其上空間 ══ -->
+    <LinearLayout
+        android:id="@+id/lowerPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:paddingBottom="20dp"
+        android:animateLayoutChanges="true"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <!-- headline 區（文字大標 與 百分比大字 疊放，互斥顯示） -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="56dp">
+
+            <TextView
+                android:id="@+id/tvHeadline"
+                style="@style/Beam.Headline"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="@string/home_ready_title" />
+
+            <LinearLayout
+                android:id="@+id/percentRow"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:orientation="horizontal"
+                android:gravity="bottom"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <TextView
+                    android:id="@+id/tvPercent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/beam_ink"
+                    android:textSize="72sp"
+                    android:textFontWeight="200"
+                    android:letterSpacing="-0.03"
+                    android:includeFontPadding="false"
+                    android:fontFeatureSettings="tnum"
+                    tools:text="87" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="2dp"
+                    android:layout_marginBottom="12dp"
+                    android:textColor="@color/beam_muted"
+                    android:textSize="22sp"
+                    android:textFontWeight="300"
+                    android:text="%" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/tvSub"
+            style="@style/Beam.Sub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:text="@string/home_ready_sub" />
+
+        <!-- 已選 / 傳輸中項目清單 -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvItems"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:maxHeight="172dp"
+            android:overScrollMode="never"
+            android:nestedScrollingEnabled="true"
+            tools:itemCount="2"
+            tools:listitem="@layout/item_send" />
+
+        <!-- 接收方：收到一包檔案的橫幅 + 查看 -->
+        <LinearLayout
+            android:id="@+id/receivedBanner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_chip"
+            android:paddingStart="18dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <TextView
+                android:id="@+id/tvReceived"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="@color/beam_ink"
+                android:textSize="15sp"
+                android:textFontWeight="600"
+                tools:text="收到 3 個項目" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnViewReceived"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/beam_accent"
+                android:textAllCaps="false"
+                android:text="@string/view_batch" />
+        </LinearLayout>
+
+        <!-- 內容選擇 -->
+        <LinearLayout
+            android:id="@+id/pickRow"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:orientation="horizontal"
+            android:baselineAligned="false">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnPickFiles"
+                style="@style/Beam.PickButton"
+                android:layout_width="0dp"
+                android:layout_height="52dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="6dp"
+                android:text="@string/pick_files"
+                app:icon="@drawable/ic_file" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnPickMedia"
+                style="@style/Beam.PickButton"
+                android:layout_width="0dp"
+                android:layout_height="52dp"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:text="@string/pick_media"
+                app:icon="@drawable/ic_image" />
+        </LinearLayout>
+
+        <!-- 傳送（已選且已連線才顯示） -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSend"
+            style="@style/Beam.SendButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="10dp"
+            android:visibility="gone"
+            app:icon="@drawable/ic_send"
+            tools:visibility="visible"
+            tools:text="傳送 3 個項目" />
+    </LinearLayout>
+
+    <!-- ══ 中央 Beam ══════════════════════════════════════════ -->
+    <com.kisslink.ui.home.BeamStageView
+        android:id="@+id/beam"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        app:layout_constraintTop_toBottomOf="@id/tvWordmark"
+        app:layout_constraintBottom_toTopOf="@id/lowerPanel" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

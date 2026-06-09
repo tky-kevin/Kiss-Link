@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="28dp">
+
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_card"
+        android:clipToOutline="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:paddingTop="20dp"
+            android:paddingBottom="22dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    style="@style/Beam.Label"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/card_received_title" />
+
+                <ImageButton
+                    android:id="@+id/btnClose"
+                    android:layout_width="34dp"
+                    android:layout_height="34dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_close"
+                    android:scaleType="centerInside"
+                    android:padding="7dp"
+                    android:contentDescription="@string/btn_cancel" />
+            </LinearLayout>
+
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/ivCardAvatar"
+                android:layout_width="100dp"
+                android:layout_height="100dp"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="2dp"
+                android:scaleType="centerCrop"
+                android:background="@drawable/bg_avatar"
+                android:src="@drawable/ic_avatar_default"
+                android:padding="26dp"
+                app:strokeColor="@color/beam_track"
+                app:strokeWidth="1.5dp"
+                app:shapeAppearanceOverlay="@style/Beam.Avatar.Circle" />
+
+            <TextView
+                android:id="@+id/tvName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:gravity="center"
+                android:textColor="@color/beam_ink"
+                android:textSize="24sp"
+                android:textFontWeight="600"
+                android:maxLines="1"
+                android:ellipsize="end"
+                tools:text="王小明" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="18dp"
+                android:background="@color/beam_track" />
+
+            <LinearLayout
+                android:id="@+id/fieldsContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="6dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSaveContact"
+                style="@style/Beam.SendButton"
+                android:layout_width="match_parent"
+                android:layout_height="54dp"
+                android:layout_marginTop="20dp"
+                app:icon="@drawable/ic_person"
+                app:iconTint="@color/beam_on_accent"
+                android:text="@string/card_save_contact" />
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+</FrameLayout>

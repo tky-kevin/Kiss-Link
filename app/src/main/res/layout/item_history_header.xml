@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="24dp"
+    android:paddingEnd="24dp"
+    android:paddingTop="16dp"
+    android:paddingBottom="6dp">
+
+    <TextView
+        android:id="@+id/tvDir"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/beam_accent"
+        android:textSize="13sp"
+        android:textFontWeight="700"
+        tools:text="傳送" />
+
+    <TextView
+        android:id="@+id/tvPeerTime"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="8dp"
+        android:textColor="@color/beam_muted"
+        android:textSize="13sp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        tools:text="· 今天 14:32" />
+
+    <TextView
+        android:id="@+id/tvCount"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/beam_muted"
+        android:textSize="13sp"
+        tools:text="3 個" />
+</LinearLayout>

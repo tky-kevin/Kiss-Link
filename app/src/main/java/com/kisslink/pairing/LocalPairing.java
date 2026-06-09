@@ -20,20 +20,34 @@ import androidx.annotation.NonNull;
 public final class LocalPairing {
 
     private static volatile PairingToken token;
+    /** 對外顯示名稱（對方碰一下即看到）。預設裝置型號，可由名片姓名覆寫。 */
+    private static volatile String displayName = Build.MODEL;
 
     private LocalPairing() {}
 
     /** 取得本機目前 token(首次呼叫時產生)。 */
     @NonNull
     public static synchronized PairingToken current() {
-        if (token == null) token = PairingToken.create(Build.MODEL);
+        if (token == null) token = PairingToken.create(displayName);
         return token;
+    }
+
+    /**
+     * 設定對外顯示名稱（名片姓名）。若名稱有變且目前 token 已存在，
+     * 換發一份帶新名稱的 token（nonce 跨非重疊場次重用無妨）。
+     * 應在「閒置時」呼叫，避免換掉正在配對中的 token。
+     */
+    public static synchronized void setDisplayName(@NonNull String name) {
+        if (name.trim().isEmpty()) return;
+        if (name.equals(displayName)) return;
+        displayName = name;
+        if (token != null) token = PairingToken.create(displayName);
     }
 
     /** 強制換一份新 token(目前未使用;保留給未來需要輪替 nonce 的情境)。 */
     @NonNull
     public static synchronized PairingToken renew() {
-        token = PairingToken.create(Build.MODEL);
+        token = PairingToken.create(displayName);
         return token;
     }
 }

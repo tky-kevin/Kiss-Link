@@ -25,6 +25,10 @@ public interface TransferDao {
     @Query("SELECT * FROM transfer_records ORDER BY timestampMs DESC LIMIT :limit")
     LiveData<List<TransferRecordEntity>> getRecentRecords(int limit);
 
+    /** 取得某一批次的所有紀錄（時間正序，符合傳輸順序）。 */
+    @Query("SELECT * FROM transfer_records WHERE batchId = :batchId ORDER BY timestampMs ASC")
+    LiveData<List<TransferRecordEntity>> getByBatch(long batchId);
+
     @Query("DELETE FROM transfer_records WHERE id = :id")
     void deleteById(long id);
 

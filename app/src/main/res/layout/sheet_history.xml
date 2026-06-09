@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/beam_surface"
+    android:paddingTop="10dp"
+    android:paddingBottom="8dp">
+
+    <View
+        android:layout_width="36dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="14dp"
+        android:background="@color/beam_track" />
+
+    <TextView
+        android:id="@+id/tvSheetTitle"
+        style="@style/Beam.Label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="24dp"
+        android:layout_marginBottom="6dp"
+        android:text="@string/history_title" />
+
+    <TextView
+        android:id="@+id/tvEmpty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:paddingTop="48dp"
+        android:paddingBottom="48dp"
+        android:textColor="@color/beam_muted"
+        android:textSize="15sp"
+        android:text="@string/history_empty"
+        android:visibility="gone" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvHistory"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxHeight="520dp"
+        android:paddingBottom="12dp"
+        android:clipToPadding="false"
+        android:overScrollMode="never" />
+</LinearLayout>

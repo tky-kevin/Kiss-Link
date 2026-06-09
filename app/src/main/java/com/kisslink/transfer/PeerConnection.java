@@ -47,19 +47,44 @@ public class PeerConnection {
     private static final String SAVE_DIR = Environment.DIRECTORY_DOWNLOADS + "/KissLink";
 
     public interface Listener {
-        /** 一個項目傳輸結束(成功或失敗)時同步呼叫一次。 */
+        /**
+         * 一個項目傳輸結束(成功或失敗)時同步呼叫一次。
+         * @param contentUri 可開啟的位置：接收端為存檔 content uri、傳送端為來源 uri；無則 null
+         * @param mime       MIME 類型
+         * @param batchId    同一次傳送/接收 burst 的批次識別（分塊用）
+         */
         void onItemCompleted(boolean sent, String name, long size, long avgSpeedBps,
-                             boolean success, byte itemType);
+                             boolean success, byte itemType,
+                             @Nullable String contentUri, @Nullable String mime, long batchId);
         /** 連線中斷(對方關閉 / 錯誤)。 */
         void onDisconnected();
+        /** 收到對方 HELLO 帶來的名片資料（名稱 + 頭像縮圖，皆可空）。 */
+        void onPeerProfile(@Nullable String name, @Nullable byte[] avatarThumb);
+        /** 收到名片(vCard)項目，帶完整 vCard bytes（供 UI 以名片介面開啟）。 */
+        void onCardReceived(@Nullable byte[] vcard, String name);
     }
 
     private final Context context;
     private final Socket socket;
     private final Listener listener;
 
+    /** 本端名片（連上後經 HELLO 送給對方顯示）。 */
+    @Nullable private final String selfName;
+    @Nullable private final byte[] selfAvatarThumb;
+
     private final BlockingQueue<Object> outQueue = new LinkedBlockingQueue<>();
     private static final Object STOP = new Object();
+
+    // 接收端批次：META 到達時若距上次活動超過此間隔即視為新批次
+    private static final long RECV_BATCH_GAP_MS = 4000;
+    private long recvBatchId = 0;
+    private long lastRecvActivity = 0;
+
+    /** 一筆待送：項目 + 其所屬批次 id。 */
+    private static final class OutItem {
+        final SendItem item; final long batchId;
+        OutItem(SendItem item, long batchId) { this.item = item; this.batchId = batchId; }
+    }
 
     private final MutableLiveData<TransferProgress> progressLd =
             new MutableLiveData<>(TransferProgress.connected());
@@ -73,9 +98,16 @@ public class PeerConnection {
     @Nullable private BufferedOutputStream out;
 
     public PeerConnection(@NonNull Context context, @NonNull Socket socket, @NonNull Listener listener) {
+        this(context, socket, listener, null, null);
+    }
+
+    public PeerConnection(@NonNull Context context, @NonNull Socket socket, @NonNull Listener listener,
+                          @Nullable String selfName, @Nullable byte[] selfAvatarThumb) {
         this.context  = context.getApplicationContext();
         this.socket   = socket;
         this.listener = listener;
+        this.selfName = selfName;
+        this.selfAvatarThumb = selfAvatarThumb;
     }
 
     public LiveData<TransferProgress> getProgress() { return progressLd; }
@@ -130,9 +162,10 @@ public class PeerConnection {
         }
     }
 
-    /** 排入待送項目(任一時刻、可多次)。 */
+    /** 排入待送項目(任一時刻、可多次)；同一次呼叫的所有項目歸為同一批次。 */
     public void sendItems(@NonNull List<SendItem> items) {
-        for (SendItem it : items) outQueue.offer(it);
+        long batch = System.currentTimeMillis();
+        for (SendItem it : items) outQueue.offer(new OutItem(it, batch));
     }
 
     public void close() {
@@ -149,14 +182,15 @@ public class PeerConnection {
 
     private void sendLoop() {
         try {
-            // HELLO 開場
-            writeFrame(TransferProtocol.encodeHeader(TransferProtocol.makeHello()), null, 0, 0);
+            // HELLO 開場（帶本端名片：名稱 + 頭像縮圖）
+            sendHello();
 
             while (running) {
                 Object o = outQueue.take();
                 if (o == STOP) break;
-                if (!(o instanceof SendItem)) continue;
-                sendOne((SendItem) o);
+                if (!(o instanceof OutItem)) continue;
+                OutItem oi = (OutItem) o;
+                sendOne(oi.item, oi.batchId);
             }
         } catch (InterruptedException ignored) {
             Thread.currentThread().interrupt();
@@ -165,7 +199,27 @@ public class PeerConnection {
         }
     }
 
-    private void sendOne(SendItem item) {
+    /** 送出 HELLO：若有名片資料則帶 JSON payload {n:name, a:base64(jpeg縮圖)}。 */
+    private void sendHello() throws IOException {
+        boolean hasProfile = (selfName != null && !selfName.isEmpty()) || selfAvatarThumb != null;
+        if (!hasProfile) {
+            writeFrame(TransferProtocol.encodeHeader(TransferProtocol.makeHello()), null, 0, 0);
+            return;
+        }
+        try {
+            JSONObject p = new JSONObject();
+            if (selfName != null) p.put("n", selfName);
+            if (selfAvatarThumb != null)
+                p.put("a", android.util.Base64.encodeToString(selfAvatarThumb, android.util.Base64.NO_WRAP));
+            byte[] payload = p.toString().getBytes(StandardCharsets.UTF_8);
+            writeFrame(TransferProtocol.encodeHeader(
+                    TransferProtocol.makeHelloWithProfile(payload.length)), payload, 0, payload.length);
+        } catch (Exception e) {
+            writeFrame(TransferProtocol.encodeHeader(TransferProtocol.makeHello()), null, 0, 0);
+        }
+    }
+
+    private void sendOne(SendItem item, long batchId) {
         long started = System.currentTimeMillis();
         boolean ok = false;
         try {
@@ -190,18 +244,20 @@ public class PeerConnection {
                             TransferProtocol.makeDataChunk(0, offset, r, crc);
                     writeFrame(TransferProtocol.encodeHeader(ch), buf, 0, r);
                     offset += r; sent += r;
-                    emitProgress(true, item.name, size, sent, started);
+                    emitProgress(true, item.name, size, sent, started, item.itemType, batchId);
                 }
             }
             // COMPLETE
             writeFrame(TransferProtocol.encodeHeader(TransferProtocol.makeComplete(0)), null, 0, 0);
             ok = true;
-            emitDone(true, item.name, size);
+            emitDone(true, item.name, size, item.itemType, batchId);
         } catch (Exception e) {
             Log.e(TAG, "sendOne failed: " + item.name, e);
         } finally {
             long avg = avgSpeed(item.size, started);
-            listener.onItemCompleted(true, item.name, Math.max(item.size, 0), avg, ok, item.itemType);
+            String uri = item.uri != null ? item.uri.toString() : null;
+            listener.onItemCompleted(true, item.name, Math.max(item.size, 0), avg, ok,
+                    item.itemType, uri, item.mime, batchId);
         }
     }
 
@@ -231,6 +287,11 @@ public class PeerConnection {
 
                 switch (h.type) {
                     case TransferProtocol.TYPE_HELLO:
+                        if (h.chunkLen > 0) {
+                            byte[] pb = new byte[h.chunkLen];
+                            readFully(in, pb, pb.length);
+                            parsePeerProfile(pb);
+                        }
                         break;
 
                     case TransferProtocol.TYPE_FILE_META: {
@@ -240,8 +301,12 @@ public class PeerConnection {
                         String name = meta.optString("n", "received_" + System.currentTimeMillis());
                         String mime = meta.optString("m", "application/octet-stream");
                         if (cur != null) cur.abort();
+                        // 批次：距上次活動超過間隔 → 新批次
+                        long now = System.currentTimeMillis();
+                        if (now - lastRecvActivity > RECV_BATCH_GAP_MS) recvBatchId = now;
+                        lastRecvActivity = now;
                         cur = new ReceivingItem(name, mime, h.totalSize, h.itemType);
-                        emitProgress(false, name, h.totalSize, 0, cur.started);
+                        emitProgress(false, name, h.totalSize, 0, cur.started, cur.itemType, recvBatchId);
                         break;
                     }
 
@@ -252,7 +317,7 @@ public class PeerConnection {
                             int crc = TransferProtocol.crc32(data, 0, data.length);
                             if (crc != h.crc32) { Log.w(TAG, "CRC mismatch"); cur.corrupt = true; }
                             cur.write(data);
-                            emitProgress(false, cur.name, cur.size, cur.received, cur.started);
+                            emitProgress(false, cur.name, cur.size, cur.received, cur.started, cur.itemType, recvBatchId);
                         }
                         break;
                     }
@@ -261,8 +326,15 @@ public class PeerConnection {
                         if (cur != null) {
                             boolean ok = cur.finish();
                             long avg = avgSpeed(cur.size, cur.started);
-                            listener.onItemCompleted(false, cur.name, cur.size, avg, ok, cur.itemType);
-                            emitDone(false, cur.name, cur.size);
+                            lastRecvActivity = System.currentTimeMillis();
+                            String uri = cur.target != null ? cur.target.toString() : null;
+                            listener.onItemCompleted(false, cur.name, cur.size, avg, ok, cur.itemType,
+                                    uri, cur.mime, recvBatchId);
+                            // 名片：把完整 vCard bytes 交給 UI 以名片介面開啟
+                            if (cur.itemType == TransferProtocol.ITEM_VCARD && cur.cardBytes() != null) {
+                                listener.onCardReceived(cur.cardBytes(), cur.name);
+                            }
+                            emitDone(false, cur.name, cur.size, cur.itemType, recvBatchId);
                             cur = null;
                         }
                         break;
@@ -296,9 +368,13 @@ public class PeerConnection {
         boolean corrupt = false;
         @Nullable Uri target;
         @Nullable OutputStream out;
+        @Nullable java.io.ByteArrayOutputStream cardBuf; // 名片：另存記憶體供 UI 開啟
+
+        @Nullable byte[] cardBytes() { return cardBuf != null ? cardBuf.toByteArray() : null; }
 
         ReceivingItem(String name, String mime, long size, byte itemType) {
             this.name = name; this.mime = mime; this.size = size; this.itemType = itemType;
+            if (itemType == TransferProtocol.ITEM_VCARD) cardBuf = new java.io.ByteArrayOutputStream();
             try {
                 ContentResolver cr = context.getContentResolver();
                 ContentValues v = new ContentValues();
@@ -317,6 +393,7 @@ public class PeerConnection {
 
         void write(byte[] data) throws IOException {
             if (out != null) { out.write(data); received += data.length; }
+            if (cardBuf != null) cardBuf.write(data);
         }
 
         boolean finish() {
@@ -344,22 +421,40 @@ public class PeerConnection {
     //  工具
     // ══════════════════════════════════════════════════════════
 
-    private void emitProgress(boolean sending, String name, long total, long done, long started) {
+    private void emitProgress(boolean sending, String name, long total, long done, long started,
+                              byte itemType, long batchId) {
         long speed = 0;
         long elapsed = System.currentTimeMillis() - started;
         if (elapsed > 0) speed = done * 1000L / elapsed;
         progressLd.postValue(new TransferProgress.Builder()
                 .phase(TransferProgress.Phase.TRANSFERRING)
-                .fileName((sending ? "傳送 " : "接收 ") + name)
+                .fileName(name).outgoing(sending).itemType(itemType).batchId(batchId)
                 .totalBytes(total).doneBytes(done).speedBps(speed)
                 .build());
     }
 
-    private void emitDone(boolean sending, String name, long size) {
+    private void emitDone(boolean sending, String name, long size, byte itemType, long batchId) {
         progressLd.postValue(new TransferProgress.Builder()
                 .phase(TransferProgress.Phase.FILE_DONE)
-                .fileName(name).totalBytes(size).doneBytes(size)
+                .fileName(name).outgoing(sending).itemType(itemType).batchId(batchId)
+                .totalBytes(size).doneBytes(size)
                 .build());
+    }
+
+    /** 解析對方 HELLO 帶來的名片 JSON，回呼 {@link Listener#onPeerProfile}。 */
+    private void parsePeerProfile(byte[] payload) {
+        try {
+            JSONObject p = new JSONObject(new String(payload, StandardCharsets.UTF_8));
+            String name = p.has("n") ? p.optString("n", null) : null;
+            byte[] avatar = null;
+            if (p.has("a")) {
+                try { avatar = android.util.Base64.decode(p.optString("a", ""), android.util.Base64.NO_WRAP); }
+                catch (Exception ignored) {}
+            }
+            listener.onPeerProfile(name, avatar);
+        } catch (Exception e) {
+            Log.w(TAG, "parsePeerProfile failed: " + e.getMessage());
+        }
     }
 
     private static long avgSpeed(long size, long startedMs) {

@@ -1,12 +1,65 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">KissLink</string>
-    <string name="btn_send">傳送</string>
-    <string name="btn_receive">接收</string>
-    <string name="btn_cancel">取消</string>
-    <string name="btn_add_files">選擇檔案</string>
-    <string name="btn_start_send">開始傳送</string>
-    <string name="status_waiting">等待連線…</string>
-    <string name="status_connected">連線成功</string>
+
+    <!-- 頂列 -->
+    <string name="cd_history">傳輸紀錄</string>
+    <string name="cd_avatar">個人名片</string>
+    <string name="btn_cancel">關閉</string>
+
+    <!-- 中央狀態文案 -->
+    <string name="home_ready_title">輕碰背面，連接</string>
+    <string name="home_ready_sub">把兩支手機背靠背貼一下</string>
+    <string name="home_connecting_title">連線中</string>
+    <string name="home_connected_title">已連線</string>
+    <string name="home_resetting_title">重整連線…</string>
+
+    <!-- 連線階段（下方序列） -->
+    <string name="stage_nfc">NFC 配對</string>
+    <string name="stage_ble">建立安全通道</string>
+    <string name="stage_wifi">Wi-Fi Direct 連線</string>
+
+    <!-- 內容選擇 / 傳送 -->
+    <string name="pick_files">選檔案</string>
+    <string name="pick_media">相片影片</string>
+    <string name="send_card">傳送名片</string>
+    <string name="btn_send_n">傳送 %1$d 個項目</string>
+    <string name="btn_clear">清除</string>
+    <string name="sending">傳送中</string>
+    <string name="receiving">接收中</string>
+    <string name="sent_to">已傳送給 %1$s</string>
+    <string name="received_from">已接收自 %1$s</string>
+
+    <!-- 名片 -->
+    <string name="profile_title">我的名片</string>
+    <string name="profile_edit">編輯</string>
+    <string name="profile_done">完成</string>
+    <string name="profile_name_hint">你的名稱</string>
+    <string name="profile_add_field">新增欄位</string>
+    <string name="profile_field_label">欄位名稱</string>
+    <string name="profile_field_value">內容</string>
+    <string name="profile_change_avatar">更換頭像</string>
+    <string name="profile_send_self">傳送我的名片</string>
+
+    <!-- 接收方批次 -->
+    <string name="received_batch">收到 %1$d 個項目</string>
+    <string name="view_batch">查看</string>
+    <string name="batch_title">本次接收</string>
+
+    <!-- 名片（接收 / 預設人設） -->
+    <string name="default_name">漫遊者</string>
+    <string name="card_received_title">收到名片</string>
+    <string name="card_save_contact">儲存到聯絡人</string>
+    <string name="card_of">%1$s的名片</string>
+    <string name="card_no_contact_app">找不到聯絡人應用程式</string>
+
+    <!-- 傳輸紀錄 -->
+    <string name="history_title">傳輸紀錄</string>
     <string name="history_empty">尚無傳輸紀錄</string>
+    <string name="history_send">傳送</string>
+    <string name="history_receive">接收</string>
+
+    <!-- 其它 -->
+    <string name="need_perms">需要 Wi-Fi、藍牙與檔案權限才能使用</string>
+    <string name="tap_to_connect_first">先碰一下連接，再傳送</string>
 </resources>

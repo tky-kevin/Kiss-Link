@@ -62,19 +62,34 @@ public class TransferRepository {
         return dao.getRecentRecords(limit);
     }
 
+    public LiveData<List<TransferRecordEntity>> getByBatch(long batchId) {
+        return dao.getByBatch(batchId);
+    }
+
     // ── 工廠方法：從傳輸進度建立紀錄 ──────────────────────────────
 
     public TransferRecordEntity buildRecord(String direction, String fileName,
                                             long sizeBytes, boolean success,
                                             long avgSpeedBps, String filePath) {
+        return buildRecord(direction, fileName, sizeBytes, success, avgSpeedBps,
+                filePath, null, null, 0L);
+    }
+
+    public TransferRecordEntity buildRecord(String direction, String fileName,
+                                            long sizeBytes, boolean success,
+                                            long avgSpeedBps, String filePath,
+                                            String peerName, String mimeType, long batchId) {
         TransferRecordEntity e = new TransferRecordEntity();
-        e.direction    = direction;
-        e.fileName     = fileName;
-        e.fileSizeBytes= sizeBytes;
-        e.success      = success;
-        e.avgSpeedBps  = avgSpeedBps;
-        e.filePath     = filePath;
-        e.timestampMs  = System.currentTimeMillis();
+        e.direction     = direction;
+        e.fileName      = fileName;
+        e.fileSizeBytes = sizeBytes;
+        e.success       = success;
+        e.avgSpeedBps   = avgSpeedBps;
+        e.filePath      = filePath;
+        e.peerDeviceName= peerName;
+        e.mimeType      = mimeType;
+        e.batchId       = batchId;
+        e.timestampMs   = System.currentTimeMillis();
         return e;
     }
 }

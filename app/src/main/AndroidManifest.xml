@@ -60,25 +60,17 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.KissLink">
 
-        <!-- ── 主畫面 ────────────────────────────────────────── -->
+        <!-- ── 單頁主畫面（配對＋傳輸）────────────────────────── -->
         <activity
-            android:name=".ui.main.MainActivity"
+            android:name=".ui.home.HomeActivity"
             android:exported="true"
-            android:launchMode="singleTop">
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-
-        <!-- ── 配對畫面 ──────────────────────────────────────── -->
-        <activity android:name=".ui.pairing.PairingActivity"
-            android:exported="false"
-            android:launchMode="singleTop"/>
-
-        <!-- ── 傳輸畫面 ──────────────────────────────────────── -->
-        <activity android:name=".ui.transfer.TransferActivity"
-            android:exported="false"/>
 
         <!-- ══════════════════════════════════════════════════
              NFC HCE Service

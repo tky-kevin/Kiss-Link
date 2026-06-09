@@ -1,16 +1,53 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <style name="Theme.KissLink" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/primary</item>
-        <item name="colorOnPrimary">@color/on_primary</item>
-        <item name="colorPrimaryContainer">@color/primary_container</item>
-        <item name="colorSecondary">@color/secondary</item>
-        <item name="colorOnSecondary">@color/on_secondary</item>
-        <item name="android:colorBackground">@color/background</item>
-        <item name="colorSurface">@color/surface</item>
-        <item name="colorOnSurface">@color/on_surface</item>
-        <item name="colorError">@color/error</item>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.KissLink" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/beam_accent</item>
+        <item name="colorOnPrimary">@color/beam_on_accent</item>
+        <item name="colorSecondary">@color/beam_accent</item>
+        <item name="colorOnSecondary">@color/beam_on_accent</item>
+        <item name="android:colorBackground">@color/beam_bg</item>
+        <item name="colorSurface">@color/beam_surface</item>
+        <item name="colorOnSurface">@color/beam_ink</item>
+        <item name="colorOnSurfaceVariant">@color/beam_muted</item>
+        <item name="colorOutline">@color/beam_track</item>
+        <item name="colorError">@color/beam_error</item>
+
+        <!-- 狀態列／導覽列：透明、深色圖示，融進暖米底 -->
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/beam_bg</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">true</item>
+
+        <!-- Bottom sheet 樣式 -->
+        <item name="bottomSheetDialogTheme">@style/Theme.KissLink.BottomSheet</item>
+    </style>
+
+    <style name="Theme.KissLink.BottomSheet" parent="Theme.Material3.Light.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/Beam.BottomSheet.Modal</item>
+    </style>
+
+    <style name="Beam.BottomSheet.Modal" parent="Widget.Material3.BottomSheet.Modal">
+        <item name="backgroundTint">@color/beam_surface</item>
+        <item name="shapeAppearance">@style/Beam.Shape.Sheet</item>
+    </style>
+
+    <style name="Beam.Shape.Sheet" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">24dp</item>
+        <item name="cornerSizeTopRight">24dp</item>
+        <item name="cornerSizeBottomLeft">0dp</item>
+        <item name="cornerSizeBottomRight">0dp</item>
+    </style>
+
+    <!-- 置中卡片對話框（名片）：透明浮動視窗，背景暗化＋模糊由程式設定 -->
+    <style name="Theme.KissLink.CardDialog" parent="Theme.Material3.Light.Dialog">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="colorPrimary">@color/beam_accent</item>
+        <item name="colorOnPrimary">@color/beam_on_accent</item>
+        <item name="colorSurface">@color/beam_surface</item>
+        <item name="colorOnSurface">@color/beam_ink</item>
     </style>
 </resources>

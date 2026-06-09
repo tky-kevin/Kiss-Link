@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="28dp">
+
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_card"
+        android:clipToOutline="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:paddingTop="20dp"
+            android:paddingBottom="22dp">
+
+            <!-- 關閉（右上） -->
+            <ImageButton
+                android:id="@+id/btnClose"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:layout_gravity="end"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_close"
+                android:scaleType="centerInside"
+                android:padding="7dp"
+                android:contentDescription="@string/btn_cancel" />
+
+            <!-- 頭像 -->
+            <FrameLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="2dp">
+
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:id="@+id/ivCardAvatar"
+                    android:layout_width="100dp"
+                    android:layout_height="100dp"
+                    android:scaleType="centerCrop"
+                    android:background="@drawable/bg_avatar"
+                    android:src="@drawable/ic_avatar_default"
+                    android:padding="26dp"
+                    app:strokeColor="@color/beam_track"
+                    app:strokeWidth="1.5dp"
+                    app:shapeAppearanceOverlay="@style/Beam.Avatar.Circle" />
+
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:id="@+id/ivAvatarEditBadge"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_gravity="bottom|end"
+                    android:background="@drawable/bg_avatar"
+                    android:src="@drawable/ic_edit"
+                    android:padding="8dp"
+                    android:visibility="gone"
+                    app:strokeColor="@color/beam_surface"
+                    app:strokeWidth="2dp"
+                    app:shapeAppearanceOverlay="@style/Beam.Avatar.Circle"
+                    tools:visibility="visible" />
+            </FrameLayout>
+
+            <!-- 姓名 -->
+            <EditText
+                android:id="@+id/etName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:gravity="center"
+                android:background="@null"
+                android:textColor="@color/beam_ink"
+                android:textSize="24sp"
+                android:textFontWeight="600"
+                android:hint="@string/profile_name_hint"
+                android:textColorHint="@color/beam_muted"
+                android:inputType="textPersonName"
+                android:maxLines="1"
+                android:enabled="false"
+                tools:text="漫遊者" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginTop="18dp"
+                android:background="@color/beam_track" />
+
+            <LinearLayout
+                android:id="@+id/fieldsContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="6dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAddField"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textColor="@color/beam_accent"
+                android:textAllCaps="false"
+                android:visibility="gone"
+                app:icon="@drawable/ic_add"
+                app:iconTint="@color/beam_accent"
+                app:iconSize="18dp"
+                android:text="@string/profile_add_field"
+                tools:visibility="visible" />
+
+            <!-- 底部按鈕：修改 / 傳送名片 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:orientation="horizontal"
+                android:baselineAligned="false">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnEditToggle"
+                    style="@style/Beam.PickButton"
+                    android:layout_width="0dp"
+                    android:layout_height="52dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="6dp"
+                    app:icon="@drawable/ic_edit"
+                    app:iconTint="@color/beam_ink"
+                    android:text="@string/profile_edit" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSendCard"
+                    style="@style/Beam.SendButton"
+                    android:layout_width="0dp"
+                    android:layout_height="52dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="6dp"
+                    app:icon="@drawable/ic_send"
+                    android:text="@string/send_card" />
+            </LinearLayout>
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+</FrameLayout>

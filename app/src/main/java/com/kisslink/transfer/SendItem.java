@@ -39,9 +39,9 @@ public final class SendItem {
         return new SendItem(itemType, name, mime, size, uri, null);
     }
 
-    /** 名片(vCard)：直接以 bytes 攜帶。 */
-    public static SendItem vcard(@NonNull String displayName, @NonNull byte[] vcf) {
-        String fn = (displayName.isEmpty() ? "contact" : displayName) + ".vcf";
+    /** 名片(vCard)：直接以 bytes 攜帶。{@code fileName} 為顯示用檔名（例如「漫遊者的名片」）。 */
+    public static SendItem vcard(@NonNull String fileName, @NonNull byte[] vcf) {
+        String fn = fileName.isEmpty() ? "contact" : fileName;
         return new SendItem(TransferProtocol.ITEM_VCARD, fn, "text/vcard", vcf.length, null, vcf);
     }
 }

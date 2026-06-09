@@ -33,6 +33,12 @@ public class TransferRecordEntity {
     /** 平均傳輸速度（bytes/sec）*/
     public long avgSpeedBps;
 
-    /** 儲存路徑（接收方）或 URI（傳送方） */
+    /** 可開啟的位置：接收方為存檔 content uri、傳送方為來源 uri */
     public String filePath;
+
+    /** MIME 類型（決定開啟方式） */
+    public String mimeType;
+
+    /** 同一次傳送/接收 burst 的批次識別（分塊用；0 表示未知） */
+    public long batchId;
 }

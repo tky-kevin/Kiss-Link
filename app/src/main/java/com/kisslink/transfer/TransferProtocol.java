@@ -159,6 +159,10 @@ public final class TransferProtocol {
     public static Header makeHello() {
         Header h = new Header(); h.type = TYPE_HELLO; return h;
     }
+    /** 帶 profile payload 的 HELLO：payload 長度放在 chunkLen（int，足以容納頭像縮圖）。 */
+    public static Header makeHelloWithProfile(int payloadLen) {
+        Header h = new Header(); h.type = TYPE_HELLO; h.chunkLen = payloadLen; return h;
+    }
     public static Header makeHeartbeat() {
         Header h = new Header(); h.type = TYPE_HEARTBEAT; return h;
     }

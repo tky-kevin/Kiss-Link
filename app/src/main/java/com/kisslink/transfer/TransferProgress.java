@@ -17,13 +17,16 @@ public final class TransferProgress {
     }
 
     public final Phase  phase;
-    public final String fileName;        // 當前傳輸的檔案名稱
+    public final String fileName;        // 當前傳輸的檔案名稱（不含方向前綴）
     public final long   totalBytes;      // 當前檔案大小 (bytes)
     public final long   doneBytes;       // 已傳輸位元組
     public final long   speedBps;        // 即時速度 bytes/sec
     public final int    fileIndex;       // 當前檔案序號（0-based）
     public final int    fileCount;       // 本次 session 總檔案數
     public final String errorMessage;   // 僅 phase==ERROR 時有值
+    public final boolean outgoing;       // true=本端傳送中；false=接收中
+    public final byte   itemType;        // TransferProtocol.ITEM_*
+    public final long   batchId;         // 該項所屬批次（分塊用）
 
     private TransferProgress(Builder b) {
         this.phase        = b.phase;
@@ -34,6 +37,9 @@ public final class TransferProgress {
         this.fileIndex    = b.fileIndex;
         this.fileCount    = b.fileCount;
         this.errorMessage = b.errorMessage;
+        this.outgoing     = b.outgoing;
+        this.itemType     = b.itemType;
+        this.batchId      = b.batchId;
     }
 
     /** 進度百分比 0–100，若 totalBytes 未知回傳 -1。 */
@@ -80,6 +86,7 @@ public final class TransferProgress {
         Phase  phase = Phase.WAITING;
         String fileName = ""; long totalBytes; long doneBytes;
         long   speedBps; int fileIndex; int fileCount; String errorMessage = "";
+        boolean outgoing; byte itemType; long batchId;
 
         public Builder phase(Phase p)           { this.phase = p; return this; }
         public Builder fileName(String n)       { this.fileName = n; return this; }
@@ -89,6 +96,9 @@ public final class TransferProgress {
         public Builder fileIndex(int i)         { this.fileIndex = i; return this; }
         public Builder fileCount(int c)         { this.fileCount = c; return this; }
         public Builder errorMessage(String m)   { this.errorMessage = m; return this; }
+        public Builder outgoing(boolean o)      { this.outgoing = o; return this; }
+        public Builder itemType(byte t)         { this.itemType = t; return this; }
+        public Builder batchId(long b)          { this.batchId = b; return this; }
         public TransferProgress build()         { return new TransferProgress(this); }
     }
 }

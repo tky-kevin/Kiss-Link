@@ -24,7 +24,7 @@ import com.kisslink.data.repository.TransferRepository;
 import com.kisslink.nfc.KissLinkHCEService;
 import com.kisslink.pairing.PairingCoordinator;
 import com.kisslink.pairing.PairingToken;
-import com.kisslink.ui.transfer.TransferActivity;
+import com.kisslink.ui.home.HomeActivity;
 import com.kisslink.wifidirect.WifiDirectManager;
 
 import java.net.InetSocketAddress;
@@ -71,6 +71,9 @@ public class FileTransferService extends Service {
 
     /** 目前連線對方的 token——用於「同對象 resume」與「新對象切換」判別。 */
     @Nullable private PairingToken connectedPeerToken;
+    /** 對方 HELLO 帶來的名片（名稱 + 頭像縮圖），優先於 token deviceName 顯示。 */
+    @Nullable private volatile String peerNameFromHello;
+    @Nullable private volatile byte[] peerAvatarBytes;
     /** 傳輸中碰到新對象時排隊,等本場傳輸結束再切換。 */
     @Nullable private PairingToken pendingSwitchPeer;
     /** 是否正在傳檔(由進度橋接更新)。 */
@@ -102,6 +105,9 @@ public class FileTransferService extends Service {
     private final MutableLiveData<SessionState> sessionLd =
             new MutableLiveData<>(SessionState.idle());
 
+    /** 收到名片(vCard)事件——帶 bytes，供 UI 以名片介面開啟；消費後置 null。 */
+    private final MutableLiveData<byte[]> incomingCardLd = new MutableLiveData<>(null);
+
     private final TransferBinder binder = new TransferBinder();
 
     // ══════════════════════════════════════════════════════════
@@ -122,6 +128,18 @@ public class FileTransferService extends Service {
 
         /** 本機這場配對的 token（前景畫面寫進 NFC HCE 用）。 */
         public PairingToken localToken() { return coordinator.localToken(); }
+
+        /** 目前已連線對方的顯示名稱（HELLO 名片優先，其次 token；未連線回 null）。 */
+        @Nullable public String connectedPeerName() { return currentPeerName(); }
+
+        /** 對方頭像縮圖 bytes（HELLO 交換；無則 null）。 */
+        @Nullable public byte[] connectedPeerAvatar() { return peerAvatarBytes; }
+
+        /** 收到名片事件（bytes 非 null 即代表有新名片可開啟）。 */
+        public LiveData<byte[]> getIncomingCard() { return incomingCardLd; }
+
+        /** UI 消費名片後清空，避免重綁定重複開啟。 */
+        public void clearIncomingCard() { incomingCardLd.postValue(null); }
 
         /** NFC：reader 相位讀到對方 token（本機當 BLE central；帶對方 token 可辨識同/新對象）。 */
         public void onNfcLatchedAsReader(@NonNull PairingToken peerToken) {
@@ -337,6 +355,8 @@ public class FileTransferService extends Service {
         KissLinkHCEService.clearToken();
         isGroupOwner = false;
         connectedPeerToken = null;
+        peerNameFromHello = null;
+        peerAvatarBytes = null;
         transferring = false;
         Log.i(TAG, "Session torn down");
     }
@@ -392,12 +412,21 @@ public class FileTransferService extends Service {
     }
 
     private void startPeer(@NonNull Socket socket) {
+        // 本端名片：連上後經 HELLO 送給對方顯示。
+        com.kisslink.profile.ProfileStore ps = com.kisslink.profile.ProfileStore.get(this);
+        String selfName = ps.name();
+        byte[] selfAvatar = ps.avatarThumbBytes();
+
         peer = new PeerConnection(this, socket, new PeerConnection.Listener() {
             @Override public void onItemCompleted(boolean sent, String name, long size,
-                                                  long avgSpeedBps, boolean success, byte itemType) {
+                                                  long avgSpeedBps, boolean success, byte itemType,
+                                                  @Nullable String contentUri, @Nullable String mime,
+                                                  long batchId) {
                 String dir = sent ? "SEND" : "RECEIVE";
+                String peerName = currentPeerName();
                 TransferRepository repo = TransferRepository.getInstance(FileTransferService.this);
-                repo.insert(repo.buildRecord(dir, name, size, success, avgSpeedBps, null));
+                repo.insert(repo.buildRecord(dir, name, size, success, avgSpeedBps,
+                        contentUri, peerName, mime, batchId));
             }
             @Override public void onDisconnected() {
                 Log.i(TAG, "Peer disconnected");
@@ -405,12 +434,26 @@ public class FileTransferService extends Service {
                     // 不報「配對失敗」(會誤導)。心跳讓兩台幾乎同時偵測到 → 對稱回到 IDLE,
                     // 使用者再碰即重連(handleLatch 會走髒狀態重建)。
                     connectedPeerToken = null;
+                    peerNameFromHello = null;
+                    peerAvatarBytes = null;
                     transferring = false;
                     teardownPeer();
                     sessionLd.postValue(SessionState.idle());
                 });
             }
-        });
+            @Override public void onPeerProfile(@Nullable String name, @Nullable byte[] avatarThumb) {
+                peerNameFromHello = name;
+                peerAvatarBytes = avatarThumb;
+                // 重推 CONNECTED 讓 UI 重新讀對方名片刷新顯示。
+                mainHandler.post(() -> {
+                    if (peer != null && peer.isAlive())
+                        sessionLd.setValue(SessionState.of(SessionState.Phase.CONNECTED));
+                });
+            }
+            @Override public void onCardReceived(@Nullable byte[] vcard, String name) {
+                incomingCardLd.postValue(vcard);
+            }
+        }, selfName, selfAvatar);
 
         // 橋接進度 → SessionState,並追蹤傳輸狀態(供「傳完切換新對象」)。
         peerProgressSrc = peer.getProgress();
@@ -437,6 +480,14 @@ public class FileTransferService extends Service {
         Log.i(TAG, "PeerConnection established (groupOwner=" + isGroupOwner + ")");
     }
 
+    /** 對方顯示名稱：HELLO 名片優先，其次配對 token。 */
+    @Nullable
+    private String currentPeerName() {
+        if (peerNameFromHello != null && !peerNameFromHello.isEmpty()) return peerNameFromHello;
+        return connectedPeerToken != null && !connectedPeerToken.deviceName.isEmpty()
+                ? connectedPeerToken.deviceName : null;
+    }
+
     private void teardownPeer() {
         if (peerProgressSrc != null && peerProgressObs != null) {
             final LiveData<TransferProgress> src = peerProgressSrc;
@@ -460,7 +511,7 @@ public class FileTransferService extends Service {
     }
 
     private Notification buildNotification(String text, int progress) {
-        Intent tap = new Intent(this, TransferActivity.class)
+        Intent tap = new Intent(this, HomeActivity.class)
                 .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent pi = PendingIntent.getActivity(this, 0, tap, PendingIntent.FLAG_IMMUTABLE);
 
