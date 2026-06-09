@@ -91,7 +91,7 @@
                 android:layout_width="36dp"
                 android:layout_height="36dp"
                 android:src="@drawable/ic_send"
-                android:tint="#FFFFFF"/>
+                android:tint="#0F172A"/>
 
             <TextView
                 android:layout_width="wrap_content"
@@ -99,7 +99,7 @@
                 android:text="傳送檔案"
                 android:textSize="18sp"
                 android:textStyle="bold"
-                android:textColor="#FFFFFF"
+                android:textColor="#0F172A"
                 android:layout_marginTop="12dp"/>
 
             <TextView
@@ -107,7 +107,7 @@
                 android:layout_height="wrap_content"
                 android:text="選擇後傳送"
                 android:textSize="13sp"
-                android:textColor="#CCFFFFFF"
+                android:textColor="#440F172A"
                 android:layout_marginTop="4dp"/>
         </LinearLayout>
 
@@ -129,7 +129,7 @@
                 android:layout_width="36dp"
                 android:layout_height="36dp"
                 android:src="@drawable/ic_receive"
-                android:tint="#FFFFFF"/>
+                android:tint="#0F172A"/>
 
             <TextView
                 android:layout_width="wrap_content"
@@ -137,7 +137,7 @@
                 android:text="接收準備"
                 android:textSize="18sp"
                 android:textStyle="bold"
-                android:textColor="#FFFFFF"
+                android:textColor="#0F172A"
                 android:layout_marginTop="12dp"/>
 
             <TextView
@@ -145,7 +145,7 @@
                 android:layout_height="wrap_content"
                 android:text="靠近後接收"
                 android:textSize="13sp"
-                android:textColor="#CCFFFFFF"
+                android:textColor="#440F172A"
                 android:layout_marginTop="4dp"/>
         </LinearLayout>
     </LinearLayout>
@@ -171,7 +171,7 @@
             android:layout_width="28dp"
             android:layout_height="28dp"
             android:src="@drawable/ic_clock"
-            android:tint="#FFFFFF"/>
+            android:tint="@color/notion_text_secondary"/>
 
         <TextView
             android:layout_width="0dp"
@@ -180,7 +180,7 @@
             android:text="查看傳輸紀錄"
             android:textSize="18sp"
             android:textStyle="bold"
-            android:textColor="#FFFFFF"
+            android:textColor="#F0F0F0"
             android:paddingStart="16dp"/>
 
         <TextView
@@ -188,7 +188,7 @@
             android:layout_height="wrap_content"
             android:text="›"
             android:textSize="24sp"
-            android:textColor="#AAFFFFFF"/>
+            android:textColor="#666666"/>
     </LinearLayout>
 
     <!-- 個人主頁與設定 -->
@@ -212,7 +212,7 @@
             android:layout_width="28dp"
             android:layout_height="28dp"
             android:src="@drawable/ic_person"
-            android:tint="#FFFFFF"/>
+            android:tint="@color/notion_text_secondary"/>
 
         <TextView
             android:layout_width="0dp"
@@ -221,7 +221,7 @@
             android:text="個人主頁與設定"
             android:textSize="18sp"
             android:textStyle="bold"
-            android:textColor="#FFFFFF"
+            android:textColor="#F0F0F0"
             android:paddingStart="16dp"/>
 
         <TextView
@@ -229,7 +229,7 @@
             android:layout_height="wrap_content"
             android:text="›"
             android:textSize="24sp"
-            android:textColor="#AAFFFFFF"/>
+            android:textColor="#666666"/>
     </LinearLayout>
 
 </LinearLayout>

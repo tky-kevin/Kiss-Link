@@ -1,34 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Dark palette (same as light — always dark) -->
-    <color name="notion_bg">#141414</color>
-    <color name="notion_surface">#1E1E1E</color>
-    <color name="notion_surface2">#2A2A2A</color>
-    <color name="notion_border">#333333</color>
-    <color name="notion_text_primary">#F0F0F0</color>
-    <color name="notion_text_secondary">#AAAAAA</color>
-    <color name="notion_text_tertiary">#666666</color>
-    <color name="notion_success">#30D158</color>
-    <color name="notion_error">#FF453A</color>
-    <color name="accent">#2EAADC</color>
-    <color name="accent_bg">#1A3A4A</color>
+    <!-- Premium Deep Navy & Cement Palette (Night) -->
+    <color name="notion_bg">#0F172A</color>
+    <color name="notion_surface">#1E293B</color>
+    <color name="notion_surface2">#334155</color>
+    <color name="notion_border">#1E293B</color>
+    <color name="notion_text_primary">#F8FAFC</color>
+    <color name="notion_text_secondary">#94A3B8</color>
+    <color name="notion_text_tertiary">#64748B</color>
+    <color name="notion_success">#10B981</color>
+    <color name="notion_error">#EF4444</color>
+    <color name="accent">#38BDF8</color>
+    <color name="accent_bg">#0C4A6E</color>
+    <color name="accent_secondary">#2DD4BF</color>
     <color name="accent_text">#FFFFFF</color>
-    <color name="btn_send">#E8960C</color>
-    <color name="btn_receive">#D94F2A</color>
-    <color name="btn_history">#1A7A4A</color>
-    <color name="btn_profile_color">#3D6A9E</color>
+
+    <!-- Button colors (Solid Style on Navy) -->
+    <color name="btn_send">#38BDF8</color>
+    <color name="btn_send_stroke">#7DD3FC</color>
+
+    <color name="btn_receive">#2DD4BF</color>
+    <color name="btn_receive_stroke">#5EEAD4</color>
+
+    <color name="btn_history">#1E293B</color>
+    <color name="btn_history_stroke">#334155</color>
+
+    <color name="btn_profile_color">#1E293B</color>
+    <color name="btn_profile_stroke">#334155</color>
 
     <!-- Legacy aliases -->
-    <color name="bg_primary">#141414</color>
-    <color name="bg_secondary">#1E1E1E</color>
-    <color name="bg_tertiary">#2A2A2A</color>
-    <color name="surface">#1E1E1E</color>
-    <color name="surface_elevated">#2A2A2A</color>
-    <color name="label_primary">#F0F0F0</color>
-    <color name="label_secondary">#AAAAAA</color>
-    <color name="label_tertiary">#666666</color>
-    <color name="separator">#333333</color>
-    <color name="destructive">#FF453A</color>
-    <color name="success">#30D158</color>
-    <color name="accent_light">#1A3A4A</color>
+    <color name="bg_primary">#0F172A</color>
+    <color name="bg_secondary">#1E293B</color>
+    <color name="bg_tertiary">#334155</color>
+    <color name="surface">#1E293B</color>
+    <color name="surface_elevated">#334155</color>
+    <color name="label_primary">#F8FAFC</color>
+    <color name="label_secondary">#94A3B8</color>
+    <color name="label_tertiary">#64748B</color>
+    <color name="separator">#1E293B</color>
+    <color name="destructive">#EF4444</color>
+    <color name="success">#10B981</color>
+    <color name="accent_light">#0C4A6E</color>
 </resources>
