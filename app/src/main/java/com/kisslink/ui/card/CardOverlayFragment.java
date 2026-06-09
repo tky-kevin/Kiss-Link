@@ -20,6 +20,7 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.fragment.app.DialogFragment;
 
 import com.google.android.material.button.MaterialButton;
@@ -100,9 +101,9 @@ public class CardOverlayFragment extends DialogFragment {
             dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
             dialog.setCanceledOnTouchOutside(true);
 
-            // 背景虛化（API 31+）
+            // 虛化後方主頁（API 31+）
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                dialog.getWindow().setBackgroundBlurRadius(20);
+                applyBlurBehind(dialog.getWindow());
             }
         }
         // 播放進場動畫：card 從上方飛入中央
@@ -219,6 +220,14 @@ public class CardOverlayFragment extends DialogFragment {
                 .setInterpolator(new AccelerateInterpolator(2.0f))
                 .withEndAction(this::dismiss)
                 .start();
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    private void applyBlurBehind(Window window) {
+        window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
+        WindowManager.LayoutParams lp = window.getAttributes();
+        lp.blurBehindRadius = 25;
+        window.setAttributes(lp);
     }
 
     private void startSwayAnimation() {

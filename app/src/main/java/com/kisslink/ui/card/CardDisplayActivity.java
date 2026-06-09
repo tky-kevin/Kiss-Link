@@ -13,6 +13,7 @@ import android.view.animation.OvershootInterpolator;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.material.button.MaterialButton;
@@ -42,9 +43,9 @@ public class CardDisplayActivity extends AppCompatActivity {
         lp.dimAmount = 0.75f;
         getWindow().setAttributes(lp);
 
-        // 背景虛化（API 31+）
+        // 虛化後方主頁（API 31+）
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            getWindow().setBackgroundBlurRadius(20);
+            applyBlurBehind();
         }
 
         setContentView(R.layout.activity_card_display);
@@ -173,6 +174,14 @@ public class CardDisplayActivity extends AppCompatActivity {
                 .setDuration(700)
                 .setInterpolator(new OvershootInterpolator(0.6f))
                 .start();
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    private void applyBlurBehind() {
+        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
+        android.view.WindowManager.LayoutParams lp = getWindow().getAttributes();
+        lp.blurBehindRadius = 25;
+        getWindow().setAttributes(lp);
     }
 
     private void dismissWithSwipeUp(View cardRoot) {
