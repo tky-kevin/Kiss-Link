@@ -19,6 +19,15 @@
     <string name="stage_nfc">建立NFC連線</string>
     <string name="stage_ble">建立BLE連線</string>
     <string name="stage_wifi">建立Wi-Fi Direct連線</string>
+    <string name="stage_tap_to_cancel">點一下可中斷重來</string>
+
+    <!-- 配對前置檢查：權限 / 無線電開關 -->
+    <string name="conn_need_title">需要開啟連線功能</string>
+    <string name="conn_need_perms">需要藍牙與 Wi-Fi 相關權限才能配對</string>
+    <string name="conn_need_nfc">請先開啟 NFC 才能背貼配對</string>
+    <string name="conn_need_bluetooth">請先開啟藍牙才能配對</string>
+    <string name="conn_need_wifi">請先開啟 Wi-Fi 才能建立連線</string>
+    <string name="action_open_settings">前往設定</string>
 
     <!-- 內容選擇 / 傳送 -->
     <string name="pick_files">選檔案</string>
@@ -73,4 +82,8 @@
     <!-- 待傳清單 -->
     <string name="send_stack_label">%1$d 個待傳項目</string>
     <string name="send_sheet_title">待傳項目</string>
+
+    <!-- 分享選單接收 -->
+    <string name="share_added">已加入 %1$d 個待傳項目，背貼連接後即可傳送</string>
+    <string name="share_unsupported">這個分享內容無法傳送</string>
 </resources>

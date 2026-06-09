@@ -62,6 +62,11 @@ public class BleCredentialClient {
     private boolean scanning = false;
     private final Runnable timeoutRunnable;
 
+    // 非 GO 端的憑證讀取後備:notify 可能因 notify-before-subscribe race 或丟包而沒收到,
+    // 改主動 READ credentialChar(GO 在 notify 前已 setValue)。雙保險,杜絕「卡在連線逾時」。
+    private boolean credentialDelivered = false;
+    @Nullable private Runnable credentialReadPoll;
+
     public BleCredentialClient(@NonNull Context context, @NonNull Callback callback) {
         this.context = context.getApplicationContext();
         this.callback = callback;
@@ -106,9 +111,30 @@ public class BleCredentialClient {
         Log.i(TAG, "Credential written to peripheral (" + bytes.length + " bytes)");
     }
 
+    /**
+     * 非 GO 端在 onReady(已連上、CCCD 已開)後呼叫:啟動憑證讀取後備。
+     * 若 GO 的 notify 沒到(notify-before-subscribe race / 丟包),改週期性 READ credentialChar，
+     * GO 一旦 publishCredential 設好值即讀得到 → onCredentialReceived。GO 端本機不需呼叫。
+     */
+    @SuppressLint("MissingPermission")
+    public void startCredentialReadFallback() {
+        if (credentialDelivered || credentialReadPoll != null) return;
+        credentialReadPoll = new Runnable() {
+            int attempts = 0;
+            @Override public void run() {
+                if (credentialDelivered || gatt == null || credentialChar == null) return;
+                if (attempts++ >= 15) { credentialReadPoll = null; return; } // ~9s 後交給 coordinator watchdog
+                try { gatt.readCharacteristic(credentialChar); } catch (Exception ignored) {}
+                main.postDelayed(this, 600);
+            }
+        };
+        main.postDelayed(credentialReadPoll, 500); // 先給 notify 一點時間
+    }
+
     @SuppressLint("MissingPermission")
     public void stop() {
         main.removeCallbacks(timeoutRunnable);
+        if (credentialReadPoll != null) { main.removeCallbacks(credentialReadPoll); credentialReadPoll = null; }
         try { if (scanning && scanner != null) scanner.stopScan(scanCallback); } catch (Exception ignored) {}
         try { if (gatt != null) { gatt.disconnect(); gatt.close(); } } catch (Exception ignored) {}
         scanning = false;
@@ -209,11 +235,26 @@ public class BleCredentialClient {
         @SuppressLint("deprecation")
         @Override public void onCharacteristicChanged(BluetoothGatt g, BluetoothGattCharacteristic ch) {
             if (ch != null && BleConstants.CHAR_CREDENTIAL.equals(ch.getUuid())) {
-                GroupCredential cred = parseCredential(ch.getValue());
-                if (cred != null) main.post(() -> callback.onCredentialReceived(cred));
+                deliverCredential(parseCredential(ch.getValue())); // notify 路徑
+            }
+        }
+
+        @SuppressLint("deprecation")
+        @Override public void onCharacteristicRead(BluetoothGatt g, BluetoothGattCharacteristic ch, int status) {
+            if (ch != null && BleConstants.CHAR_CREDENTIAL.equals(ch.getUuid())
+                    && status == BluetoothGatt.GATT_SUCCESS) {
+                deliverCredential(parseCredential(ch.getValue())); // 讀取後備路徑
             }
         }
     };
+
+    /** 憑證只交付一次(notify 與 read 後備擇一先到者),並停掉讀取輪詢。 */
+    private void deliverCredential(@Nullable GroupCredential cred) {
+        if (cred == null || credentialDelivered) return;
+        credentialDelivered = true;
+        if (credentialReadPoll != null) { main.removeCallbacks(credentialReadPoll); credentialReadPoll = null; }
+        main.post(() -> callback.onCredentialReceived(cred));
+    }
 
     @Nullable
     private static GroupCredential parseCredential(@Nullable byte[] value) {

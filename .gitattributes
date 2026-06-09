@@ -1,0 +1,4 @@
+# Gradle wrapper: the launcher script must stay LF or it breaks under *nix shells.
+gradlew        text eol=lf
+gradlew.bat    text eol=crlf
+*.jar          binary

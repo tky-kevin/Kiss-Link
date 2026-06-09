@@ -13,10 +13,17 @@ high-speed transfer over TCP.
 - **Bidirectional transfer** — once connected, either side can send files, photos, or a
   contact card, in multiple rounds.
 - **Contact cards** — share a vCard (with avatar embedded) that the receiver can save to Contacts.
+- **Share-sheet target** — share any file/photo from another app to KissLink; it queues into the
+  send list, then back-tap to connect and send.
 - **Live transfer UI** — central avatar with a ring progress, transfer speed, NFC ripple
   standby animation, and a card-fly animation when sending a card.
 - **Transfer history** — every sent/received item is recorded locally (Room).
-- **Manual disconnect** and automatic, power-aware cleanup of idle connections.
+- **Pre-connect checks** — verifies Bluetooth / Wi-Fi / NFC and the relevant permissions are on
+  before pairing, and prompts to enable what's missing.
+- **Interruptible connecting** — every connection stage (NFC / BLE / Wi-Fi Direct) is tappable to
+  cancel-and-retry, with per-stage timeouts so a failed attempt never gets stuck.
+- **Power-aware cleanup** — manual disconnect tears the Wi-Fi Direct group down immediately; leaving
+  the app while idle (not transferring) releases it automatically after a short timeout.
 
 ## How it works
 
@@ -49,15 +56,18 @@ NFC tap (HCE / reader)
 
 ## Building
 
-The repository has **no Gradle wrapper**. Build with Gradle 8.13 and a JDK 21
-(e.g. Android Studio's bundled JBR):
+The repository ships a **Gradle wrapper** (Gradle 8.13). Use a **JDK 21** — a newer system JDK
+(e.g. JDK 25) is incompatible with AGP 8.x, so point `JAVA_HOME` at one (Android Studio's bundled
+JBR works):
 
 ```bash
+export JAVA_HOME="/path/to/jdk-21"   # e.g. Android Studio's JBR
+
 # Debug APK
-gradle :app:assembleDebug
+./gradlew :app:assembleDebug
 
 # Signed release APK (signed with the Android debug key, installable directly)
-gradle :app:assembleRelease
+./gradlew :app:assembleRelease
 ```
 
 Outputs:

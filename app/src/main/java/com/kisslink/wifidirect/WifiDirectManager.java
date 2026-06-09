@@ -458,8 +458,11 @@ public class WifiDirectManager implements WifiDirectEventCallback {
         // 即使此處被系統拒絕，TCP 仍能透過預設路由連到 192.168.49.1，因此絕不可讓它使 App 崩潰。
         try {
             connManager.requestNetwork(req, clientNetworkCallback);
-        } catch (SecurityException e) {
-            Log.w(TAG, "requestNetwork denied, relying on default routing to GO", e);
+        } catch (RuntimeException e) {
+            // SecurityException(受限網路權限)外,部分 OEM 對不完整 NetworkRequest 會丟
+            // IllegalArgumentException。此處僅為路由優化,任何失敗都不得使 App 崩潰——
+            // TCP 仍可走預設路由連到 GO(192.168.49.1)。
+            Log.w(TAG, "requestNetwork failed, relying on default routing to GO", e);
             clientNetworkCallback = null;
         }
     }

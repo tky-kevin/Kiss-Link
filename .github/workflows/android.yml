@@ -23,7 +23,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      # 專案沒有 gradle wrapper，改由 action 安裝指定 Gradle 版本並提供 `gradle` 指令。
+      # 專案已含 gradle wrapper（8.13）；CI 仍用 action 安裝對應 Gradle 並以 `gradle` 指令建置。
       - name: Set up Gradle 8.13
         uses: gradle/actions/setup-gradle@v4
         with:

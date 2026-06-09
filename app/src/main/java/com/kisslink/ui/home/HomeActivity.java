@@ -88,6 +88,13 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
     // ── Service ──
     @Nullable private FileTransferService.TransferBinder binder;
     private boolean bound = false;
+    // 穩定的 observer 實例:背景/前景往返會反覆 onServiceConnected,用固定實例避免重複註冊堆疊。
+    private final androidx.lifecycle.Observer<SessionState> sessionObserver = this::onSession;
+    private final androidx.lifecycle.Observer<byte[]> incomingCardObserver = vcard -> {
+        if (vcard == null || vcard.length == 0 || binder == null) return;
+        ReceivedCardSheet.newInstance(vcard).show(getSupportFragmentManager(), "received_card");
+        binder.clearIncomingCard();
+    };
 
     // ── NFC ──
     @Nullable private NfcPairingController nfc;
@@ -151,12 +158,12 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
             PermissionHelper.requestPermissions(this);
         }
 
-        // 啟動並綁定傳輸 Service（單一 session 擁有者）
-        Intent svc = FileTransferService.intent(this);
-        startForegroundService(svc);
-        bindService(svc, connection, BIND_AUTO_CREATE);
-
+        // Service 的啟動/綁定移到 onStart（解綁在 onStop）：離開 App（背景）即解綁，
+        // 觸發 Service 的閒置自動拆除，不再讓 Wi-Fi Direct 在背景常駐。
         renderReady();
+
+        // 從其他 app 分享檔案進來 → 加入待傳清單。
+        handleShareIntent(getIntent());
     }
 
     private void bindViews() {
@@ -218,6 +225,29 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
         });
     }
 
+    @Override protected void onStart() {
+        super.onStart();
+        // 進入前景（含背景閒置拆除後返回）→ 確保 Service 存在並綁定。
+        Intent svc = FileTransferService.intent(this);
+        startForegroundService(svc); // 若已在運行則無害；若已被閒置拆除則復活
+        if (!bound) {
+            bindService(svc, connection, BIND_AUTO_CREATE);
+            bound = true;
+        }
+    }
+
+    @Override protected void onStop() {
+        super.onStop();
+        // 離開 App（切到其他 app / 回主畫面 / 鎖屏）→ 解綁。Service 仍為已啟動的前景服務而存活，
+        // 但若沒在傳檔，會在閒置逾時（IDLE_TEARDOWN_MS）後自動 stopSelf 釋放 Wi-Fi Direct。
+        // 傳輸中（transferring）時 Service 不會自拆，背景傳檔可繼續。返回 App（onStart）會重新綁定。
+        if (bound) {
+            try { unbindService(connection); } catch (IllegalArgumentException ignored) {}
+            bound = false;
+            binder = null;
+        }
+    }
+
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
@@ -237,6 +267,45 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
         super.onNewIntent(intent);
         setIntent(intent);
         if (nfc != null) nfc.handleIntent(intent);
+        handleShareIntent(intent);
+    }
+
+    /**
+     * 接收「分享選單」送進來的檔案/相片(ACTION_SEND / ACTION_SEND_MULTIPLE)→ 併入待傳清單。
+     * 分享的 URI 帶臨時讀取授權,於本 Activity 期間有效(碰一下連線 → 傳送 皆在同一畫面內完成)。
+     */
+    private void handleShareIntent(@Nullable Intent intent) {
+        if (intent == null) return;
+        String action = intent.getAction();
+        boolean single = Intent.ACTION_SEND.equals(action);
+        boolean multi  = Intent.ACTION_SEND_MULTIPLE.equals(action);
+        if (!single && !multi) return;
+
+        List<Uri> uris = new ArrayList<>();
+        if (single) {
+            Uri u = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+            if (u != null) uris.add(u);
+        } else {
+            ArrayList<Uri> list = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+            if (list != null) uris.addAll(list);
+        }
+        if (uris.isEmpty()) { toast(getString(R.string.share_unsupported)); clearShareIntent(); return; }
+
+        for (Uri uri : uris) {
+            byte type = TransferProtocol.ITEM_FILE;
+            String mt = getContentResolver().getType(uri);
+            if (mt == null) mt = intent.getType();
+            if (mt != null && mt.startsWith("image/")) type = TransferProtocol.ITEM_PHOTO;
+            selection.add(SendItem.fromUri(getContentResolver(), uri, type));
+        }
+        onSelectionChanged();
+        toast(getString(R.string.share_added, uris.size()));
+        clearShareIntent(); // 避免旋轉/重綁時重複加入
+    }
+
+    /** 消費掉分享 intent,換成普通 intent,避免後續生命週期重複處理。 */
+    private void clearShareIntent() {
+        setIntent(new Intent(this, HomeActivity.class));
     }
 
     @Override protected void onDestroy() {
@@ -260,18 +329,17 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
 
     private final ServiceConnection connection = new ServiceConnection() {
         @Override public void onServiceConnected(ComponentName name, IBinder service) {
+            // bound 由 onStart/onStop 管理(綁定生命週期);此處只接上 binder。
             binder = (FileTransferService.TransferBinder) service;
-            bound = true;
             enableNfcIfReady();
-            binder.getSessionState().observe(HomeActivity.this, HomeActivity.this::onSession);
-            binder.getIncomingCard().observe(HomeActivity.this, vcard -> {
-                if (vcard == null || vcard.length == 0) return;
-                ReceivedCardSheet.newInstance(vcard).show(getSupportFragmentManager(), "received_card");
-                binder.clearIncomingCard();
-            });
+            // 用穩定 observer 實例 + 固定 owner(this):同一 LiveData 重綁不重複註冊;
+            // 服務被閒置拆除後重建(新 LiveData)則自動重新觀察。
+            binder.getSessionState().observe(HomeActivity.this, sessionObserver);
+            binder.getIncomingCard().observe(HomeActivity.this, incomingCardObserver);
         }
         @Override public void onServiceDisconnected(ComponentName name) {
-            bound = false; binder = null;
+            // 服務進程意外中止(非主動解綁);binding 仍註冊,AUTO_CREATE 會重連。
+            binder = null;
         }
     };
 
@@ -284,10 +352,13 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
         nfc = new NfcPairingController(this, new NfcPairingController.Callback() {
             @Override public void onPeerToken(@NonNull PairingToken peer) {
                 haptic();
+                // 建立任何連線前先確認權限與無線電都就緒;否則提示開啟並放掉這次 latch(可立即再碰)。
+                if (!connectivityReadyOrPrompt()) { if (nfc != null) nfc.resetLatched(); return; }
                 if (binder != null) binder.onNfcLatchedAsReader(peer);
             }
             @Override public void onTagRead() {
                 haptic();
+                if (!connectivityReadyOrPrompt()) { if (nfc != null) nfc.resetLatched(); return; }
                 if (binder != null) binder.onNfcLatchedAsTag();
             }
             @Override public void onError(@NonNull String message) { toast(message); }
@@ -295,7 +366,7 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
     }
 
     private void enableNfcIfReady() {
-        if (!bound || binder == null || !resumed) return;
+        if (binder == null || !resumed) return;
         ensureController();
         nfc.setLocalToken(binder.localToken());
         nfc.enable();
@@ -404,8 +475,8 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
             if (!stageRunning) return;
             if (stageShown < stageTarget) {
                 stageShown++;
-                // #8：階段名稱作為大字標題（無小字）
-                showHeadlineText(stageLabel(stageShown), "");
+                // 階段名稱作為大字標題,小字提示「點一下可中斷重來」(失敗不卡死)。
+                showHeadlineText(stageLabel(stageShown), getString(R.string.stage_tap_to_cancel));
             }
             main.postDelayed(this, STAGE_MIN_DWELL_MS);
         }
@@ -679,15 +750,86 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
         dlg.show();
     }
 
-    /** #9：點「已連線至 xxx」→ 確認後手動斷線。 */
+    /**
+     * 點中央大字標題:
+     * <ul>
+     *   <li>已連線 → 確認後手動斷線(#9)。</li>
+     *   <li>配對/連線中或失敗 → 立即輕量中斷重來,確保卡住時一點即解、可即時再貼合重連。</li>
+     * </ul>
+     */
     private void onHeadlineTapped() {
-        if (!isConnected() || binder == null) return;
+        if (binder == null) return;
+        if (isConnected()) {
+            new androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle(R.string.disconnect_title)
+                    .setMessage(R.string.disconnect_msg)
+                    .setNegativeButton(R.string.btn_cancel, null)
+                    .setPositiveButton(R.string.disconnect_confirm, (dd, w) -> {
+                        if (binder != null) binder.disconnect();
+                    })
+                    .show();
+        } else if (isInterruptiblePairing(lastPhase)) {
+            binder.interruptPairing();
+        }
+    }
+
+    /** 是否為「可一點即中斷」的配對/連線/失敗階段(RESETTING 不在內——正在沉澱拆除中)。 */
+    private static boolean isInterruptiblePairing(SessionState.Phase p) {
+        switch (p) {
+            case PAIRING_LATCHED:
+            case PAIRING_LINKING:
+            case PAIRING_ELECTING:
+            case CREATING_GROUP:
+            case HOSTING:
+            case CONNECTING:
+            case ERROR:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * 建立連線前的就緒檢查:先確認連線必需的執行期權限,再確認 NFC/藍牙/Wi-Fi 已開啟。
+     * 任一未就緒 → 提示使用者(請求權限 / 開啟對應設定)並回 false,呼叫端應放掉本次配對。
+     */
+    private boolean connectivityReadyOrPrompt() {
+        if (!PermissionHelper.hasConnectivityPermissions(this)) {
+            PermissionHelper.requestPermissions(this);
+            toast(getString(R.string.conn_need_perms));
+            return false;
+        }
+        PermissionHelper.Radio off = PermissionHelper.firstDisabledRadio(this);
+        if (off != null) { promptEnableRadio(off); return false; }
+        return true;
+    }
+
+    /** 提示開啟未啟用的無線電,並提供「前往設定」直達對應系統設定頁。 */
+    private void promptEnableRadio(@NonNull PermissionHelper.Radio radio) {
+        final int msgRes;
+        final Intent settings;
+        switch (radio) {
+            case NFC:
+                msgRes = R.string.conn_need_nfc;
+                settings = new Intent(android.provider.Settings.ACTION_NFC_SETTINGS);
+                break;
+            case BLUETOOTH:
+                msgRes = R.string.conn_need_bluetooth;
+                settings = new Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS);
+                break;
+            case WIFI:
+            default:
+                msgRes = R.string.conn_need_wifi;
+                settings = new Intent(android.provider.Settings.Panel.ACTION_WIFI);
+                break;
+        }
         new androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle(R.string.disconnect_title)
-                .setMessage(R.string.disconnect_msg)
+                .setTitle(R.string.conn_need_title)
+                .setMessage(msgRes)
                 .setNegativeButton(R.string.btn_cancel, null)
-                .setPositiveButton(R.string.disconnect_confirm, (dd, w) -> {
-                    if (binder != null) binder.disconnect();
+                .setPositiveButton(R.string.action_open_settings, (dd, w) -> {
+                    try { startActivity(settings); }
+                    catch (Exception e) { toast(getString(msgRes)); }
                 })
                 .show();
     }

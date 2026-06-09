@@ -79,8 +79,12 @@ public class FileTransferService extends Service {
     /** 是否正在傳檔(由進度橋接更新)。 */
     private boolean transferring = false;
 
-    /** 省電:無 UI 綁定(背景)且非傳輸,閒置此時間後自動結束服務(拆 Wi-Fi 群組)。 */
-    private static final long IDLE_TEARDOWN_MS = 120_000;
+    /**
+     * 省電:離開 App(背景、UI 解綁)且非傳輸,閒置此時間後自動結束服務(拆 Wi-Fi 群組/SoftAP)。
+     * 取 45 秒折衷:夠長,短暫切換 app / 開系統選檔器(會讓 Activity onStop)返回不會誤斷;
+     * 夠短,放下手機後很快釋放 Wi-Fi Direct,不長時間背景常駐耗電。
+     */
+    private static final long IDLE_TEARDOWN_MS = 45_000;
     private boolean uiBound = false;
     private final Runnable idleTeardown = () -> {
         if (!uiBound && !transferring) {
@@ -186,12 +190,34 @@ public class FileTransferService extends Service {
          */
         public void disconnect() {
             mainHandler.post(() -> {
+                if (pendingReset) return; // 重置沉澱中 → 忽略
+                // 使用者「主動」斷開:徹底拆除(含移除 Wi-Fi 群組/BLE),不保留 SoftAP 背景常駐。
+                // 隨即重建乾淨 coordinator(會重新發佈 HCE token)→ 回待機,可立即重新配對。
+                teardownSession();
+                createCoordinator();
+                sessionLd.setValue(SessionState.idle());
+                Log.i(TAG, "User disconnect → full teardown (Wi-Fi group removed)");
+            });
+        }
+
+        /**
+         * 使用者點配對/連線階段文字「中斷重來」:走與手動斷線相同的輕量路徑——
+         * 停掉進行中的配對 BLE({@link PairingCoordinator#cancelLightweight})、拆 peer(若已建立)、回 IDLE。
+         * 刻意<b>不</b>走 {@link #teardownSession}(不清 HCE token、不拆 Wi-Fi 群組),
+         * 那些交給下一次貼合的 {@link #proceedWithLatch} dirty 重建。如此中斷後可立即再貼合重連。
+         */
+        public void interruptPairing() {
+            mainHandler.post(() -> {
+                if (pendingReset) return; // 重置沉澱中 → 忽略,避免打斷正在進行的拆除
                 connectedPeerToken = null;
                 peerNameFromHello = null;
                 peerAvatarBytes = null;
                 transferring = false;
+                peerStarting = false;
                 teardownPeer();
+                if (coordinator != null) coordinator.cancelLightweight();
                 sessionLd.setValue(SessionState.idle());
+                Log.i(TAG, "Pairing interrupted (lightweight) → IDLE; rebuild deferred to next tap");
             });
         }
     }
@@ -282,6 +308,10 @@ public class FileTransferService extends Service {
                 sessionLd.postValue(SessionState.error(message));
             }
         });
+        // Service 是 HCE token 的唯一擁有者:每建一個 coordinator 就(重新)發佈 token,
+        // 讓本機在 teardown→rebuild 後仍可被當作 NFC tag 讀取——不再依賴 Activity onResume
+        // 才補設 token(否則 dirty 重建清掉 token 後會留下「無法被碰」的死區)。token 為進程穩定值。
+        KissLinkHCEService.setActiveToken(coordinator.localToken());
     }
 
     private static SessionState mapPhase(PairingCoordinator.Phase p) {
@@ -392,7 +422,10 @@ public class FileTransferService extends Service {
         teardownPeer();
         if (coordinator != null) coordinator.reset();
         if (wifi != null) { wifi.removeGroup(); wifi.reset(); }
-        KissLinkHCEService.clearToken();
+        // 刻意不清 HCE token:teardownSession 之後一定接著 createCoordinator 重新發佈同一份
+        // (進程穩定的)token。若在此清掉,dirty 重建期間/之後本機會變成「無 token、無法被碰讀」
+        // 的死區,直到 Activity onResume 才補回——正是「中斷後立即重碰失效」的根因。
+        // 真正關機(onDestroy)才會 clearToken。
         isGroupOwner = false;
         connectedPeerToken = null;
         peerNameFromHello = null;

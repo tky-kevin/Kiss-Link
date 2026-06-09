@@ -2,6 +2,8 @@ package com.kisslink.pairing;
 
 import android.content.Context;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import androidx.annotation.MainThread;
@@ -69,6 +71,13 @@ public class PairingCoordinator {
     @Nullable private Observer<ConnectionState> stateObserver;
     @Nullable private Observer<GroupCredential> credObserver;
 
+    // ── 每階段逾時看門狗 ───────────────────────────────────────
+    // 每次相位推進就重新計時;某一階段卡住超過預算 → fail() 帶該階段專屬文字。
+    // 這填補了子元件各自逾時的縫隙(如 BLE 在 GATT 連上後即取消自身逾時、
+    // 非 GO 端等對方憑證時根本沒人計時、GO 端 HOSTING 等 client 也無逾時)。
+    private final Handler watchdog = new Handler(Looper.getMainLooper());
+    @Nullable private Runnable watchdogRunnable;
+
     public PairingCoordinator(@NonNull Context ctx, @NonNull WifiDirectManager wifi,
                               @NonNull Listener listener) {
         this.context  = ctx.getApplicationContext();
@@ -100,9 +109,9 @@ public class PairingCoordinator {
         if (finished || started) return; // 角色已鎖 → 忽略(含同一次貼合的反向 tag latch)
         started = true;
         this.peerToken = peer;
-        listener.onPhase(Phase.LATCHED);
+        emit(Phase.LATCHED);
         observeWifi();
-        listener.onPhase(Phase.LINKING);
+        emit(Phase.LINKING);
 
         bleClient = new BleCredentialClient(context, new BleCredentialClient.Callback() {
             @Override public void onReady() {
@@ -122,9 +131,9 @@ public class PairingCoordinator {
     public void onLatchedAsTag() {
         if (finished || started) return; // 角色已鎖 → 忽略(含同一次貼合的反向 reader latch)
         started = true;
-        listener.onPhase(Phase.LATCHED);
+        emit(Phase.LATCHED);
         observeWifi();
-        listener.onPhase(Phase.LINKING);
+        emit(Phase.LINKING);
 
         bleServer = new BleCredentialServer(context, new BleCredentialServer.Callback() {
             @Override public void onPeerToken(@NonNull PairingToken peer) {
@@ -149,18 +158,21 @@ public class PairingCoordinator {
         if (finished || roleDecided || peerToken == null) return;
         roleDecided = true;
         iAmGroupOwner = localToken.shouldBeGroupOwner(peerToken);
-        listener.onPhase(Phase.ELECTING);
+        emit(Phase.ELECTING);
         Log.i(TAG, "GO election: iAmGO=" + iAmGroupOwner
                 + " (local=" + localToken + ", peer=" + peerToken + ")");
 
         if (iAmGroupOwner) {
             // 我是 GO：建群組,憑證就緒後經 BLE 交給對方。
-            listener.onPhase(Phase.CONNECTING);
+            emit(Phase.CONNECTING);
             wifi.createGroupAsGO();
             // 憑證由 credObserver 接手 → publishCredentialToPeer()
         } else {
             // 對方是 GO：等對方經 BLE 送憑證(onCredentialFromPeer),收到才 connectAsClient。
-            listener.onPhase(Phase.CONNECTING);
+            emit(Phase.CONNECTING);
+            // central 端啟動憑證讀取後備:GO 的 notify 若因 race/丟包沒到,改主動 READ 補上,
+            // 杜絕重連時「GO 已送憑證、client 沒收到 → 卡在 Wi-Fi Direct 連線逾時」。
+            if (bleClient != null) bleClient.startCredentialReadFallback();
         }
     }
 
@@ -191,7 +203,7 @@ public class PairingCoordinator {
             if (finished) return;
             if (state == ConnectionState.CONNECTED) {
                 finished = true;
-                listener.onPhase(Phase.CONNECTED);
+                emit(Phase.CONNECTED);
                 listener.onPaired(iAmGroupOwner);
                 stopBle(); // 憑證已交付、連線已建立,BLE 任務完成
             } else if (state == ConnectionState.ERROR) {
@@ -215,9 +227,25 @@ public class PairingCoordinator {
     private void fail(@NonNull String msg) {
         if (finished) return;
         finished = true;
+        cancelWatchdog();
         Log.w(TAG, "Pairing failed: " + msg);
         stopBle();
         listener.onError(msg);
+    }
+
+    /**
+     * 輕量中斷(使用者點階段文字「中斷重來」):停掉進行中的 BLE、標記本場結束,
+     * 但<b>不</b>移除 Wi-Fi 觀察者、<b>不</b>清 HCE token、<b>不</b>拆 Wi-Fi 群組。
+     * 與 {@link #fail} 的差別:不發 {@link Listener#onError}(不顯示失敗文字),由上層直接回待機。
+     * Wi-Fi 群組/coordinator 的重建交給下一次貼合的 dirty 重建流程(那時才走 reset + 沉澱)。
+     */
+    @MainThread
+    public void cancelLightweight() {
+        if (finished) return;
+        finished = true;
+        cancelWatchdog();
+        stopBle();
+        Log.d(TAG, "Coordinator cancelled (lightweight; wifi/HCE untouched)");
     }
 
     private void stopBle() {
@@ -229,9 +257,50 @@ public class PairingCoordinator {
     @MainThread
     public void reset() {
         finished = true;
+        cancelWatchdog();
         stopBle();
         if (stateObserver != null) { wifi.getState().removeObserver(stateObserver); stateObserver = null; }
         if (credObserver  != null) { wifi.getCredential().removeObserver(credObserver); credObserver = null; }
         Log.d(TAG, "Coordinator reset");
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  相位推進 + 每階段逾時看門狗
+    // ══════════════════════════════════════════════════════════
+
+    /** 推進相位:通知上層並重新武裝該階段的逾時看門狗(已結束則不再推進)。 */
+    @MainThread
+    private void emit(@NonNull Phase phase) {
+        if (finished && phase != Phase.CONNECTED) return;
+        listener.onPhase(phase);
+        armWatchdog(phase);
+    }
+
+    /** 依目前階段設定逾時:逾時即 fail() 帶該階段專屬文字,讓 UI 進入「可再碰一下重連」的失敗態。 */
+    @MainThread
+    private void armWatchdog(@NonNull Phase phase) {
+        cancelWatchdog();
+        final long budgetMs;
+        final String msg;
+        switch (phase) {
+            case LATCHED:    budgetMs =  8_000; msg = "配對逾時,請再碰一下重試"; break;
+            case LINKING:    budgetMs = 15_000; msg = "BLE 連線逾時,請再碰一下重試"; break;
+            case ELECTING:   budgetMs =  8_000; msg = "配對協商逾時,請再碰一下重試"; break;
+            case CONNECTING: budgetMs = 25_000; msg = "Wi-Fi Direct 連線逾時,請再碰一下重試"; break;
+            default:         return; // IDLE / CONNECTED：不設逾時
+        }
+        watchdogRunnable = () -> {
+            watchdogRunnable = null;
+            Log.w(TAG, "Watchdog fired at phase " + phase);
+            fail(msg);
+        };
+        watchdog.postDelayed(watchdogRunnable, budgetMs);
+    }
+
+    private void cancelWatchdog() {
+        if (watchdogRunnable != null) {
+            watchdog.removeCallbacks(watchdogRunnable);
+            watchdogRunnable = null;
+        }
     }
 }
