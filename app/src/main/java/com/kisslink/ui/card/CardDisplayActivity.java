@@ -44,10 +44,7 @@ public class CardDisplayActivity extends AppCompatActivity {
 
         // 背景虛化（API 31+）
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
-            android.view.WindowManager.LayoutParams blurLp = getWindow().getAttributes();
-            blurLp.blurBehindRadius = 25;
-            getWindow().setAttributes(blurLp);
+            getWindow().setBackgroundBlurRadius(20);
         }
 
         setContentView(R.layout.activity_card_display);

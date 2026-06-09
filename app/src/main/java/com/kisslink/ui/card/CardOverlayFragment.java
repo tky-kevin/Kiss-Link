@@ -102,10 +102,7 @@ public class CardOverlayFragment extends DialogFragment {
 
             // 背景虛化（API 31+）
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
-                WindowManager.LayoutParams lp = dialog.getWindow().getAttributes();
-                lp.blurBehindRadius = 25;
-                dialog.getWindow().setAttributes(lp);
+                dialog.getWindow().setBackgroundBlurRadius(20);
             }
         }
         // 播放進場動畫：card 從上方飛入中央
