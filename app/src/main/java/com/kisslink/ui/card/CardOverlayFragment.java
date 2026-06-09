@@ -20,7 +20,6 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.annotation.RequiresApi;
 import androidx.fragment.app.DialogFragment;
 
 import com.google.android.material.button.MaterialButton;
@@ -222,12 +221,14 @@ public class CardOverlayFragment extends DialogFragment {
                 .start();
     }
 
-    @RequiresApi(Build.VERSION_CODES.S)
     private void applyBlurBehind(Window window) {
-        window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
-        WindowManager.LayoutParams lp = window.getAttributes();
-        lp.blurBehindRadius = 25;
-        window.setAttributes(lp);
+        try {
+            window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
+            WindowManager.LayoutParams lp = window.getAttributes();
+            java.lang.reflect.Field f = lp.getClass().getField("blurBehindRadius");
+            f.set(lp, 25);
+            window.setAttributes(lp);
+        } catch (Exception ignored) {}
     }
 
     private void startSwayAnimation() {

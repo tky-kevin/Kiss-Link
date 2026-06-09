@@ -13,7 +13,6 @@ import android.view.animation.OvershootInterpolator;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.material.button.MaterialButton;
@@ -176,12 +175,14 @@ public class CardDisplayActivity extends AppCompatActivity {
                 .start();
     }
 
-    @RequiresApi(Build.VERSION_CODES.S)
     private void applyBlurBehind() {
-        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
-        android.view.WindowManager.LayoutParams lp = getWindow().getAttributes();
-        lp.blurBehindRadius = 25;
-        getWindow().setAttributes(lp);
+        try {
+            getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
+            android.view.WindowManager.LayoutParams lp = getWindow().getAttributes();
+            java.lang.reflect.Field f = lp.getClass().getField("blurBehindRadius");
+            f.set(lp, 25);
+            getWindow().setAttributes(lp);
+        } catch (Exception ignored) {}
     }
 
     private void dismissWithSwipeUp(View cardRoot) {
