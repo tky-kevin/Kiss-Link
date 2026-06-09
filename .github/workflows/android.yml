@@ -1,12 +1,15 @@
-name: Build APK
+name: Release APK
 
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write   # 需要寫入權限才能建立 Release
+
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,12 +29,16 @@ jobs:
         with:
           gradle-version: "8.13"
 
-      - name: Build debug APK
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Build release APK
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+          tag_name: v1.0.${{ github.run_number }}
+          name: 安卓抓普 v1.0.${{ github.run_number }}
+          body: |
+            自動建置的正式版 APK（以 debug key 簽署，可直接安裝）。
+            Commit: ${{ github.sha }}
+          files: app/build/outputs/apk/release/app-release.apk
+          fail_on_unmatched_files: true

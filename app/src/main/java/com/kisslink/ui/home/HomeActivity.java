@@ -82,6 +82,8 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
 
     // #1：未連線時按傳送名片 → 排隊，連上後自動送出
     private boolean pendingCardSend = false;
+    // 本端是否正在送出待傳清單（送出鈕只在此期間隱藏；接收對方檔案時不影響送出鈕）
+    private boolean sending = false;
 
     // ── Service ──
     @Nullable private FileTransferService.TransferBinder binder;
@@ -337,6 +339,7 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
                 showPeerIdentity();
                 showHeadlineText(connectedHeadline(), "");   // #8：已連線至 xxx
                 if (nfc != null) nfc.resetLatched(); // 連上後仍可再碰（同對象 resume / 新對象切換）
+                sending = false;
                 updateSendButton();
                 rebuildSendStack();
                 if (pendingCardSend) { pendingCardSend = false; main.post(this::sendMyProfileCard); } // #1
@@ -374,6 +377,7 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
         showHeadlineText(getString(R.string.home_ready_title), "");   // #8：去掉小字
         hideReceivedBanner();
         recvBatchId = 0; recvCount = 0;
+        sending = false;
         updateSendButton();
         rebuildSendStack();
     }
@@ -492,6 +496,7 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
             selection.clear();
             outgoingNames.clear();
             outgoingRemaining = 0;
+            sending = false;
             rebuildSendStack();
             if (sendSheet != null && sendSheet.isShowing()) sendSheet.dismiss();
         } else if (tp != null) {
@@ -565,13 +570,18 @@ public class HomeActivity extends AppCompatActivity implements ProfileCardSheet.
         outgoingNames.clear();
         for (SendItem it : selection) outgoingNames.add(it.name);
         outgoingRemaining = selection.size();
+        sending = true;                 // 本端正在送出 → 送出鈕暫時隱藏
         binder.sendItems(new ArrayList<>(selection));
+        updateSendButton();
         haptic();
     }
 
+    /**
+     * 送出鈕：只要「已連線且待傳清單有東西」就顯示；僅在本端正在送出（{@link #sending}）時隱藏。
+     * 不再用 lastPhase 判斷——否則「接收對方一包檔」期間/結束時會誤把送出鈕藏掉。
+     */
     private void updateSendButton() {
-        boolean show = isConnected() && !selection.isEmpty()
-                && lastPhase != SessionState.Phase.TRANSFERRING;
+        boolean show = isConnected() && !selection.isEmpty() && !sending;
         if (show) {
             btnSend.setText(getString(R.string.btn_send_n, selection.size()));
             Anim.revealFadeUp(btnSend);
