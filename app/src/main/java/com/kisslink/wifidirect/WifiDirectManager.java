@@ -94,6 +94,10 @@ public class WifiDirectManager implements WifiDirectEventCallback {
     private Network clientNetwork;
     private ConnectivityManager.NetworkCallback clientNetworkCallback;
 
+    /** 同步重入守衛:createGroupAsGO/connectAsClient 進行中為 true,擋住重疊呼叫的競態
+     *  (state 用 postValue 非同步更新,光靠 state 檢查擋不住同一輪的第二次呼叫)。 */
+    private boolean starting = false;
+
     // ── 超時計時器 ─────────────────────────────────────────────
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private Runnable timeoutRunnable;
@@ -163,10 +167,11 @@ public class WifiDirectManager implements WifiDirectEventCallback {
      */
     @SuppressLint("MissingPermission") // 權限在呼叫端由 PermissionHelper 確認
     public void createGroupAsGO() {
-        if (stateLd.getValue() != ConnectionState.IDLE) {
-            Log.w(TAG, "createGroupAsGO skipped, state=" + stateLd.getValue());
+        if (starting || stateLd.getValue() != ConnectionState.IDLE) {
+            Log.w(TAG, "createGroupAsGO skipped, starting=" + starting + " state=" + stateLd.getValue());
             return;
         }
+        starting = true; // 同步守衛:擋住重疊 coordinator 的第二次 createGroup(state 用 postValue 非同步,擋不住競態)
 
         // 檢查 Wi-Fi 是否開啟
         android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager)
@@ -322,10 +327,11 @@ public class WifiDirectManager implements WifiDirectEventCallback {
      */
     @SuppressLint("MissingPermission")
     public void connectAsClient(@NonNull GroupCredential credential) {
-        if (stateLd.getValue() != ConnectionState.IDLE) {
-            Log.w(TAG, "connectAsClient skipped, state=" + stateLd.getValue());
+        if (starting || stateLd.getValue() != ConnectionState.IDLE) {
+            Log.w(TAG, "connectAsClient skipped, starting=" + starting + " state=" + stateLd.getValue());
             return;
         }
+        starting = true;
         setState(ConnectionState.CONNECTING);
         Log.i(TAG, "Connecting as client (silent P2P) to: " + credential);
 
@@ -629,6 +635,11 @@ public class WifiDirectManager implements WifiDirectEventCallback {
     // ══════════════════════════════════════════════════════════
 
     private void setState(ConnectionState s) {
+        // 到達任何終態 → 釋放重入守衛,允許下一場 createGroup/connect。
+        if (s == ConnectionState.CONNECTED || s == ConnectionState.ERROR
+                || s == ConnectionState.DISCONNECTED || s == ConnectionState.IDLE) {
+            starting = false;
+        }
         Log.d(TAG, "State: " + stateLd.getValue() + " → " + s);
         stateLd.postValue(s);
     }

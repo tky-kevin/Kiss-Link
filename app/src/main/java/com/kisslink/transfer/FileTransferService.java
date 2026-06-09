@@ -136,6 +136,13 @@ public class FileTransferService extends Service {
     }
 
     @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        // 使用者把 App 從最近清單滑掉 → 結束整個 session(配對畫面不再負責停服務)。
+        super.onTaskRemoved(rootIntent);
+        stopSelf();
+    }
+
+    @Override
     public void onDestroy() {
         super.onDestroy();
         teardownPeer();

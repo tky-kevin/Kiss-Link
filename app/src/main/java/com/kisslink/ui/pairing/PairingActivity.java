@@ -114,7 +114,9 @@ public class PairingActivity extends AppCompatActivity {
     @Override protected void onDestroy() {
         super.onDestroy();
         if (bound) { unbindService(connection); bound = false; }
-        if (isFinishing() && !navigating) stopSessionService();
+        // 不在此停服務:配對流程中 Activity 可能反覆重建,若在此 stopService 會把進行中的
+        // 配對/連線連同 WifiDirectManager 一起砍掉再重建,製造殘留狀態與重疊 coordinator。
+        // 服務改由「明確按取消」或「App 從最近清單滑掉(onTaskRemoved)」才結束。
     }
 
     // ── Service 綁定 ────────────────────────────────────────────
