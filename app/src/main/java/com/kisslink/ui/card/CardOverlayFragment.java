@@ -1,18 +1,21 @@
 package com.kisslink.ui.card;
 
+import android.animation.ObjectAnimator;
 import android.app.Dialog;
 import android.content.DialogInterface;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.WindowManager;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
-import android.view.animation.LinearInterpolator;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -29,11 +32,13 @@ import com.kisslink.nfc.KissLinkHCEService;
 
 public class CardOverlayFragment extends DialogFragment {
 
-    private enum ShareState { IDLE, SPINNING, WAITING }
+    private enum ShareState { IDLE, WAITING }
     private ShareState state = ShareState.IDLE;
 
     private View cardAnimTarget;
     private MaterialButton btnShare;
+    private ObjectAnimator swayAnimator;
+    private float swipeStartY = 0f;
 
     // ══════════════════════════════════════════════════════════
     //  Dialog 建立
@@ -65,6 +70,23 @@ public class CardOverlayFragment extends DialogFragment {
         btnShare.setOnClickListener(v -> onShareClicked());
 
         populateCard(rootView);
+
+        // 向上滑動關閉
+        cardAnimTarget.setOnTouchListener((v, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    swipeStartY = event.getRawY();
+                    return true;
+                case MotionEvent.ACTION_UP:
+                    float deltaY = swipeStartY - event.getRawY(); // 正值 = 往上滑
+                    if (deltaY > 120) { // 上滑超過 120dp 就關閉
+                        dismissWithSwipeUp();
+                        return true;
+                    }
+                    break;
+            }
+            return false;
+        });
     }
 
     @Override
@@ -77,6 +99,14 @@ public class CardOverlayFragment extends DialogFragment {
                     ViewGroup.LayoutParams.MATCH_PARENT);
             dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
             dialog.setCanceledOnTouchOutside(true);
+
+            // 背景虛化（API 31+）
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
+                WindowManager.LayoutParams lp = dialog.getWindow().getAttributes();
+                lp.blurBehindRadius = 25;
+                dialog.getWindow().setAttributes(lp);
+            }
         }
         // 播放進場動畫：card 從上方飛入中央
         playEnterAnimation();
@@ -194,45 +224,67 @@ public class CardOverlayFragment extends DialogFragment {
                 .start();
     }
 
+    private void startSwayAnimation() {
+        stopSwayAnimation(); // 防止重複
+        swayAnimator = ObjectAnimator.ofFloat(cardAnimTarget, "rotation", -2.5f, 2.5f);
+        swayAnimator.setDuration(1400);
+        swayAnimator.setRepeatCount(ObjectAnimator.INFINITE);
+        swayAnimator.setRepeatMode(ObjectAnimator.REVERSE);
+        swayAnimator.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+        swayAnimator.start();
+    }
+
+    private void stopSwayAnimation() {
+        if (swayAnimator != null) {
+            swayAnimator.cancel();
+            if (cardAnimTarget != null) {
+                cardAnimTarget.setRotation(0f); // 重設角度
+            }
+            swayAnimator = null;
+        }
+    }
+
+    private void dismissWithSwipeUp() {
+        stopSwayAnimation();
+        KissLinkHCEService.clearCredential();
+        KissLinkHCEService.clearOnCardDeliveredCallback();
+        // 卡片往上飛出
+        if (cardAnimTarget == null) { dismiss(); return; }
+        cardAnimTarget.animate()
+                .translationY(-2000f)
+                .alpha(0f)
+                .setDuration(350)
+                .setInterpolator(new android.view.animation.AccelerateInterpolator(2f))
+                .withEndAction(this::dismiss)
+                .start();
+    }
+
     // ══════════════════════════════════════════════════════════
     //  分享流程
     // ══════════════════════════════════════════════════════════
 
     private void onShareClicked() {
         if (state != ShareState.IDLE) return;
-        state = ShareState.SPINNING;
-        btnShare.setEnabled(false);
-
-        // Step 1：翻牌動畫（繞 Y 軸旋轉 360°）
-        cardAnimTarget.animate()
-                .rotationY(360f)
-                .setDuration(600)
-                .setInterpolator(new LinearInterpolator())
-                .withEndAction(() -> {
-                    cardAnimTarget.setRotationY(0f);
-                    onSpinComplete();
-                })
-                .start();
-    }
-
-    private void onSpinComplete() {
         state = ShareState.WAITING;
+
+        btnShare.setEnabled(false);
+        btnShare.setText("靠近對方手機中...");
+
+        // 輕微左右晃動（一直持續到 NFC 完成）
+        startSwayAnimation();
 
         // 設定 HCE
         BusinessCard card = UserProfileRepository.getInstance(requireContext()).getBusinessCard();
         KissLinkHCEService.setBusinessCard(card);
 
-        // 更新按鈕文字提示
-        btnShare.setText("靠近對方手機中...");
-        btnShare.setEnabled(false);
-
-        // 設定 NFC 送達回調
+        // NFC 送達回調
         KissLinkHCEService.setOnCardDeliveredCallback(() -> {
-            if (isAdded()) onCardDelivered();
+            if (isAdded()) requireActivity().runOnUiThread(this::onCardDelivered);
         });
     }
 
     private void onCardDelivered() {
+        stopSwayAnimation();
         KissLinkHCEService.clearCredential();
         KissLinkHCEService.clearOnCardDeliveredCallback();
         playFlyAwayAndDismiss();
@@ -245,6 +297,7 @@ public class CardOverlayFragment extends DialogFragment {
     @Override
     public void onDismiss(@NonNull DialogInterface dialog) {
         super.onDismiss(dialog);
+        stopSwayAnimation();
         KissLinkHCEService.clearCredential();
         KissLinkHCEService.clearOnCardDeliveredCallback();
     }

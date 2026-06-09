@@ -3,9 +3,12 @@ package com.kisslink.ui.card;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.provider.ContactsContract;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.animation.AccelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -38,6 +41,15 @@ public class CardDisplayActivity extends AppCompatActivity {
         android.view.WindowManager.LayoutParams lp = getWindow().getAttributes();
         lp.dimAmount = 0.75f;
         getWindow().setAttributes(lp);
+
+        // 背景虛化（API 31+）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_BLUR_BEHIND);
+            android.view.WindowManager.LayoutParams blurLp = getWindow().getAttributes();
+            blurLp.blurBehindRadius = 25;
+            getWindow().setAttributes(blurLp);
+        }
+
         setContentView(R.layout.activity_card_display);
 
         BusinessCard card = getIntent().getParcelableExtra(EXTRA_CARD);
@@ -46,11 +58,35 @@ public class CardDisplayActivity extends AppCompatActivity {
         populateCard(card);
 
         MaterialButton btnSave = findViewById(R.id.btnSaveToContacts);
-        btnSave.setOnClickListener(v -> saveToContacts(card));
+        btnSave.setOnClickListener(v -> {
+            saveToContacts(card);
+            finish(); // 儲存後回主頁，blur 解除
+        });
 
         findViewById(R.id.btnDisplayBack).setOnClickListener(v -> finish());
 
         playCardDropEntry();
+
+        // 向上滑動關閉
+        View cardRoot = findViewById(R.id.cardAnimRoot);
+        float[] swipeStartYArr = {0f};
+        if (cardRoot != null) {
+            cardRoot.setOnTouchListener((v, event) -> {
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        swipeStartYArr[0] = event.getRawY();
+                        return true;
+                    case MotionEvent.ACTION_UP:
+                        float deltaY = swipeStartYArr[0] - event.getRawY();
+                        if (deltaY > 120) {
+                            dismissWithSwipeUp(cardRoot);
+                            return true;
+                        }
+                        break;
+                }
+                return false;
+            });
+        }
     }
 
     private void populateCard(BusinessCard card) {
@@ -139,6 +175,16 @@ public class CardDisplayActivity extends AppCompatActivity {
                 .alpha(1f)
                 .setDuration(700)
                 .setInterpolator(new OvershootInterpolator(0.6f))
+                .start();
+    }
+
+    private void dismissWithSwipeUp(View cardRoot) {
+        cardRoot.animate()
+                .translationY(-2000f)
+                .alpha(0f)
+                .setDuration(350)
+                .setInterpolator(new AccelerateInterpolator(2f))
+                .withEndAction(this::finish)
                 .start();
     }
 
