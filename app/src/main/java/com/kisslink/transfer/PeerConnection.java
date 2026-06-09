@@ -64,8 +64,13 @@ public class PeerConnection {
     private final MutableLiveData<TransferProgress> progressLd =
             new MutableLiveData<>(TransferProgress.connected());
 
+    private static final int HEARTBEAT_INTERVAL_MS = 2500;
+    private static final int LIVENESS_TIMEOUT_MS   = 7000;
+
     private volatile boolean running = false;
-    private Thread readerThread, senderThread;
+    private Thread readerThread, senderThread, heartbeatThread;
+    private final Object writeLock = new Object();
+    @Nullable private BufferedOutputStream out;
 
     public PeerConnection(@NonNull Context context, @NonNull Socket socket, @NonNull Listener listener) {
         this.context  = context.getApplicationContext();
@@ -75,14 +80,49 @@ public class PeerConnection {
 
     public LiveData<TransferProgress> getProgress() { return progressLd; }
 
+    /** 連線是否仍存活(心跳/資料在 {@value #LIVENESS_TIMEOUT_MS}ms 內有往來)。 */
+    public boolean isAlive() { return running; }
+
     public void start() {
         if (running) return;
         running = true;
-        readerThread = new Thread(this::readLoop, "peer-reader");
-        senderThread = new Thread(this::sendLoop, "peer-sender");
+        try {
+            out = new BufferedOutputStream(socket.getOutputStream());
+            socket.setSoTimeout(LIVENESS_TIMEOUT_MS); // 逾時內沒收到任何封包(含心跳)→ 視為斷線
+        } catch (IOException e) {
+            Log.e(TAG, "start failed", e);
+            running = false;
+            listener.onDisconnected();
+            return;
+        }
+        readerThread    = new Thread(this::readLoop, "peer-reader");
+        senderThread    = new Thread(this::sendLoop, "peer-sender");
+        heartbeatThread = new Thread(this::heartbeatLoop, "peer-heartbeat");
         readerThread.start();
         senderThread.start();
+        heartbeatThread.start();
         Log.i(TAG, "PeerConnection started");
+    }
+
+    /** 所有 socket 寫入的唯一出口:同步序列化,確保心跳不會插進資料封包中間造成錯位。 */
+    private void writeFrame(byte[] header, @Nullable byte[] payload, int off, int len) throws IOException {
+        synchronized (writeLock) {
+            if (out == null) throw new IOException("stream closed");
+            out.write(header);
+            if (payload != null && len > 0) out.write(payload, off, len);
+            out.flush();
+        }
+    }
+
+    /** 心跳:每 {@value #HEARTBEAT_INTERVAL_MS}ms 送一個,讓對端的 SO_TIMEOUT 不會誤判斷線。 */
+    private void heartbeatLoop() {
+        byte[] hb = TransferProtocol.encodeHeader(TransferProtocol.makeHeartbeat());
+        while (running) {
+            try { Thread.sleep(HEARTBEAT_INTERVAL_MS); } catch (InterruptedException e) { break; }
+            if (!running) break;
+            try { writeFrame(hb, null, 0, 0); }
+            catch (IOException e) { Log.w(TAG, "heartbeat failed: " + e.getMessage()); break; }
+        }
     }
 
     /** 排入待送項目(任一時刻、可多次)。 */
@@ -93,6 +133,7 @@ public class PeerConnection {
     public void close() {
         running = false;
         outQueue.offer(STOP);
+        if (heartbeatThread != null) heartbeatThread.interrupt();
         try { socket.close(); } catch (IOException ignored) {}
         Log.d(TAG, "PeerConnection closed");
     }
@@ -103,16 +144,14 @@ public class PeerConnection {
 
     private void sendLoop() {
         try {
-            BufferedOutputStream out = new BufferedOutputStream(socket.getOutputStream());
             // HELLO 開場
-            out.write(TransferProtocol.encodeHeader(TransferProtocol.makeHello()));
-            out.flush();
+            writeFrame(TransferProtocol.encodeHeader(TransferProtocol.makeHello()), null, 0, 0);
 
             while (running) {
                 Object o = outQueue.take();
                 if (o == STOP) break;
                 if (!(o instanceof SendItem)) continue;
-                sendOne(out, (SendItem) o);
+                sendOne((SendItem) o);
             }
         } catch (InterruptedException ignored) {
             Thread.currentThread().interrupt();
@@ -121,7 +160,7 @@ public class PeerConnection {
         }
     }
 
-    private void sendOne(BufferedOutputStream out, SendItem item) {
+    private void sendOne(SendItem item) {
         long started = System.currentTimeMillis();
         boolean ok = false;
         try {
@@ -133,8 +172,7 @@ public class PeerConnection {
             long size = item.size >= 0 ? item.size : 0;
             TransferProtocol.Header mh =
                     TransferProtocol.makeItemMeta(0, item.itemType, size, metaBytes.length);
-            out.write(TransferProtocol.encodeHeader(mh));
-            out.write(metaBytes);
+            writeFrame(TransferProtocol.encodeHeader(mh), metaBytes, 0, metaBytes.length);
 
             // CHUNKS
             byte[] buf = new byte[TransferProtocol.CHUNK_SIZE];
@@ -145,15 +183,13 @@ public class PeerConnection {
                     int crc = TransferProtocol.crc32(buf, 0, r);
                     TransferProtocol.Header ch =
                             TransferProtocol.makeDataChunk(0, offset, r, crc);
-                    out.write(TransferProtocol.encodeHeader(ch));
-                    out.write(buf, 0, r);
+                    writeFrame(TransferProtocol.encodeHeader(ch), buf, 0, r);
                     offset += r; sent += r;
                     emitProgress(true, item.name, size, sent, started);
                 }
             }
             // COMPLETE
-            out.write(TransferProtocol.encodeHeader(TransferProtocol.makeComplete(0)));
-            out.flush();
+            writeFrame(TransferProtocol.encodeHeader(TransferProtocol.makeComplete(0)), null, 0, 0);
             ok = true;
             emitDone(true, item.name, size);
         } catch (Exception e) {

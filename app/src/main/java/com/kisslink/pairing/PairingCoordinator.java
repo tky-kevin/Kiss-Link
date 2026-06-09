@@ -87,6 +87,9 @@ public class PairingCoordinator {
     /** 是否已收到第一次 latch 並鎖定角色。已 started 的場不再接受新 latch。 */
     public boolean hasStarted() { return started; }
 
+    /** 本場對方的 token(供 resume / 新手機判別「同對象 vs 新對象」)。 */
+    @Nullable public PairingToken peerToken() { return peerToken; }
+
     // ══════════════════════════════════════════════════════════
     //  NFC latch 入口（由前景 Activity 經 binder 餵入）
     // ══════════════════════════════════════════════════════════

@@ -71,6 +71,8 @@ public final class TransferProtocol {
     public static final byte TYPE_ERROR         = 0x0A;
     /** peer 雙向模型的開場握手(連上後雙方各送一次)。 */
     public static final byte TYPE_HELLO         = 0x0B;
+    /** 心跳:雙方各自定期送,讓對端據此判斷連線存活(SO_TIMEOUT 內沒收到任何封包即視為斷線)。 */
+    public static final byte TYPE_HEARTBEAT     = 0x0C;
 
     // ── Item Types（雙向 peer：一條 socket 可送多種內容）─────────
     public static final byte ITEM_FILE  = 0;
@@ -156,6 +158,9 @@ public final class TransferProtocol {
     }
     public static Header makeHello() {
         Header h = new Header(); h.type = TYPE_HELLO; return h;
+    }
+    public static Header makeHeartbeat() {
+        Header h = new Header(); h.type = TYPE_HEARTBEAT; return h;
     }
     /** 雙向 peer 的項目 meta：帶 itemType。 */
     public static Header makeItemMeta(int itemId, byte itemType, long totalSize, int metaLen) {

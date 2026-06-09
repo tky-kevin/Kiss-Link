@@ -69,6 +69,13 @@ public class FileTransferService extends Service {
     private final android.os.Handler mainHandler =
             new android.os.Handler(android.os.Looper.getMainLooper());
 
+    /** 目前連線對方的 token——用於「同對象 resume」與「新對象切換」判別。 */
+    @Nullable private PairingToken connectedPeerToken;
+    /** 傳輸中碰到新對象時排隊,等本場傳輸結束再切換。 */
+    @Nullable private PairingToken pendingSwitchPeer;
+    /** 是否正在傳檔(由進度橋接更新)。 */
+    private boolean transferring = false;
+
     @Nullable private LiveData<TransferProgress> peerProgressSrc;
     @Nullable private Observer<TransferProgress> peerProgressObs;
 
@@ -97,14 +104,14 @@ public class FileTransferService extends Service {
         /** 本機這場配對的 token（前景畫面寫進 NFC HCE 用）。 */
         public PairingToken localToken() { return coordinator.localToken(); }
 
-        /** NFC：reader 相位讀到對方 token（本機當 BLE central）。 */
+        /** NFC：reader 相位讀到對方 token（本機當 BLE central；帶對方 token 可辨識同/新對象）。 */
         public void onNfcLatchedAsReader(@NonNull PairingToken peerToken) {
-            onLatch(() -> coordinator.onLatchedAsReader(peerToken));
+            handleLatch(peerToken, () -> coordinator.onLatchedAsReader(peerToken));
         }
 
-        /** NFC：自己 HCE 被讀（本機當 BLE peripheral）。 */
+        /** NFC：自己 HCE 被讀（本機當 BLE peripheral；無法當下辨識對方身分）。 */
         public void onNfcLatchedAsTag() {
-            onLatch(() -> coordinator.onLatchedAsTag());
+            handleLatch(null, () -> coordinator.onLatchedAsTag());
         }
 
         /** 連上後送出內容（任一端皆可、可多輪）。 */
@@ -173,6 +180,7 @@ public class FileTransferService extends Service {
             @Override public void onPaired(boolean groupOwner) {
                 if (gen != sessionGen) return; // 殘留場 → 忽略,避免錯誤角色 establishPeer
                 isGroupOwner = groupOwner;
+                connectedPeerToken = coordinator.peerToken(); // 記住對象供 resume / 新對象判別
                 sessionLd.postValue(SessionState.of(SessionState.Phase.CONNECTING));
                 establishPeer(groupOwner);
             }
@@ -216,11 +224,44 @@ public class FileTransferService extends Service {
      *       再建新 coordinator 並交付 latch。期間顯示 RESETTING。</li>
      * </ul>
      */
+    /**
+     * NFC latch 單一序列化入口,先處理「已連線」情境,再決定是否重新配對。
+     *
+     * @param tappedPeer reader 端能立刻知道對方 token(辨識同/新對象);tag 端為 null(無法辨識)。
+     */
     @androidx.annotation.MainThread
-    private void onLatch(@NonNull Runnable deliver) {
+    private void handleLatch(@Nullable PairingToken tappedPeer, @NonNull Runnable deliver) {
+        // 配對進行中(已鎖角色、未結束)→ 忽略(含同一次貼合射頻反向 latch、重複觸碰)。
         if (coordinator != null && coordinator.hasStarted() && !coordinator.isFinished()) return;
         if (pendingReset) return;
 
+        boolean alive = (peer != null && peer.isAlive());
+        if (alive) {
+            // tag 端無法辨識對方 → 視為同對象(等效:連線中不接受新對象,避免誤拆)。
+            boolean samePeer = (tappedPeer == null) || tappedPeer.sameSession(connectedPeerToken);
+            if (samePeer) {
+                // 同對象 + 連線存活 → resume:不動連線,推 CONNECTED 讓 UI 直接回傳輸畫面。
+                sessionLd.setValue(SessionState.of(SessionState.Phase.CONNECTED));
+                Log.i(TAG, "Same-peer tap while connected → resume (no teardown)");
+                return;
+            }
+            // 新對象(只有 reader 端能辨識到此)
+            if (transferring) {
+                pendingSwitchPeer = tappedPeer;
+                mainHandler.post(() -> android.widget.Toast.makeText(
+                        FileTransferService.this, "傳輸完成後切換至新裝置",
+                        android.widget.Toast.LENGTH_LONG).show());
+                Log.i(TAG, "New peer while transferring → queued switch");
+                return;
+            }
+            // 已連線但閒置 → 立即切換(走下面的髒狀態拆除+沉澱+重建)。
+        }
+        proceedWithLatch(deliver);
+    }
+
+    /** 乾淨 → 直接交付;髒(剛斷線/已連線/Wi-Fi 還在)→ 拆除 + 等 stack 沉澱 + 重建後交付。 */
+    @androidx.annotation.MainThread
+    private void proceedWithLatch(@NonNull Runnable deliver) {
         boolean dirty = peer != null
                 || (coordinator != null && coordinator.isFinished())
                 || (wifi != null && wifi.isActive());
@@ -243,6 +284,16 @@ public class FileTransferService extends Service {
         }, RESET_SETTLE_MS);
     }
 
+    /** 傳輸結束後,若有排隊的新對象 → 切換(以 reader 身分重新配對該對象)。 */
+    @androidx.annotation.MainThread
+    private void maybeSwitchToPendingPeer() {
+        if (pendingSwitchPeer == null) return;
+        final PairingToken p = pendingSwitchPeer;
+        pendingSwitchPeer = null;
+        Log.i(TAG, "Transfer done → switching to queued new peer");
+        handleLatch(p, () -> coordinator.onLatchedAsReader(p));
+    }
+
     /** 拆除目前 session(peer + coordinator + Wi-Fi 群組 + BLE),但不建立新 coordinator。 */
     private void teardownSession() {
         teardownPeer();
@@ -250,6 +301,8 @@ public class FileTransferService extends Service {
         if (wifi != null) { wifi.removeGroup(); wifi.reset(); }
         KissLinkHCEService.clearToken();
         isGroupOwner = false;
+        connectedPeerToken = null;
+        transferring = false;
         Log.i(TAG, "Session torn down");
     }
 
@@ -313,16 +366,27 @@ public class FileTransferService extends Service {
             }
             @Override public void onDisconnected() {
                 Log.i(TAG, "Peer disconnected");
-                new android.os.Handler(getMainLooper()).post(() -> {
-                    sessionLd.postValue(SessionState.error("與對方斷開連線"));
+                mainHandler.post(() -> {
+                    // 不報「配對失敗」(會誤導)。心跳讓兩台幾乎同時偵測到 → 對稱回到 IDLE,
+                    // 使用者再碰即重連(handleLatch 會走髒狀態重建)。
+                    connectedPeerToken = null;
+                    transferring = false;
                     teardownPeer();
+                    sessionLd.postValue(SessionState.idle());
                 });
             }
         });
 
-        // 橋接進度 → SessionState
+        // 橋接進度 → SessionState,並追蹤傳輸狀態(供「傳完切換新對象」)。
         peerProgressSrc = peer.getProgress();
-        peerProgressObs = tp -> { if (tp != null) sessionLd.postValue(SessionState.fromTransfer(tp)); };
+        peerProgressObs = tp -> {
+            if (tp == null) return;
+            sessionLd.postValue(SessionState.fromTransfer(tp));
+            boolean now = (tp.phase == TransferProgress.Phase.TRANSFERRING);
+            boolean ended = transferring && !now;
+            transferring = now;
+            if (ended) maybeSwitchToPendingPeer();
+        };
         // observeForever 須在主執行緒
         new android.os.Handler(getMainLooper()).post(() -> {
             if (peerProgressSrc != null && peerProgressObs != null)
