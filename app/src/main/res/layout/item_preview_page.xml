@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <!-- 圖片/影片預覽（初始 GONE，載入完才顯示） -->
+    <ImageView
+        android:id="@+id/ivPreview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitCenter"
+        android:visibility="gone"/>
+
+    <!-- 影片 play overlay icon（居中） -->
+    <ImageView
+        android:id="@+id/ivPlayOverlay"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_gravity="center"
+        android:src="@android:drawable/ic_media_play"
+        android:tint="#CCFFFFFF"
+        android:visibility="gone"/>
+
+    <!-- 其他檔案 icon（居中） -->
+    <ImageView
+        android:id="@+id/ivFileIcon"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:layout_gravity="center"
+        android:tint="#CCFFFFFF"
+        android:visibility="gone"/>
+
+    <!-- 檔案名稱（底部） -->
+    <TextView
+        android:id="@+id/tvFileName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="24dp"
+        android:textColor="#CCFFFFFF"
+        android:textSize="13sp"
+        android:maxLines="1"
+        android:ellipsize="middle"/>
+
+</FrameLayout>

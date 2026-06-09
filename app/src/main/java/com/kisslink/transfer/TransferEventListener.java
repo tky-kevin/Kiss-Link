@@ -1,5 +1,7 @@
 package com.kisslink.transfer;
 
+import androidx.annotation.Nullable;
+
 /**
  * 逐檔完成事件的回呼——由 {@link TransferServer} / {@link TransferClient} 在
  * 每個檔案真正結束（成功或失敗）的那一點**同步**呼叫一次。
@@ -15,6 +17,8 @@ public interface TransferEventListener {
      * @param sizeBytes    檔案大小
      * @param avgSpeedBps  平均速度（bytes/sec），無法計算時為 0
      * @param success      是否成功完成
+     * @param fileUri      接收方：MediaStore URI 字串；傳送方傳 null
      */
-    void onFileCompleted(String fileName, long sizeBytes, long avgSpeedBps, boolean success);
+    void onFileCompleted(String fileName, long sizeBytes, long avgSpeedBps,
+                         boolean success, @Nullable String fileUri);
 }

@@ -20,6 +20,7 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MediatorLiveData;
 import androidx.lifecycle.MutableLiveData;
 
+import com.kisslink.data.db.TransferRecordEntity;
 import com.kisslink.data.repository.TransferRepository;
 import com.kisslink.model.GroupCredential;
 import com.kisslink.nfc.KissLinkHCEService;
@@ -27,6 +28,7 @@ import com.kisslink.ui.transfer.TransferActivity;
 import com.kisslink.wifidirect.ConnectionState;
 import com.kisslink.wifidirect.WifiDirectManager;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -76,6 +78,9 @@ public class FileTransferService extends Service {
     private boolean haveFiles   = false; // 已有待傳檔案入列
     private boolean serverReady = false; // server 已與接收方握手完成
     private boolean sendStarted = false; // 已開始送檔（避免重複）
+
+    // ── 接收方：本次 session 收到的檔案 URI 列表 ─────────────────
+    private final List<String> receivedFileUris = new ArrayList<>();
 
     /** 傳輸層進度匯總（內部用）—— server/client 的進度都橋接到此。 */
     private final MutableLiveData<TransferProgress> serviceLd =
@@ -146,6 +151,11 @@ public class FileTransferService extends Service {
         public void cancel() {
             if (transferServer != null) transferServer.cancel();
             if (transferClient != null) transferClient.cancel();
+        }
+
+        /** 接收方：取得本次傳輸收到的所有檔案 URI（ALL_DONE 後使用）*/
+        public List<String> getReceivedFileUris() {
+            return new ArrayList<>(receivedFileUris);
         }
     }
 
@@ -269,11 +279,19 @@ public class FileTransferService extends Service {
      * 逐檔完成回呼（由 TransferServer/TransferClient 在背景執行緒同步呼叫）——
      * 一檔一次、不經會合併的 LiveData，因此歷史紀錄數量永遠正確。
      */
-    private void onFileCompleted(String fileName, long sizeBytes, long avgSpeedBps, boolean success) {
+    private void onFileCompleted(String fileName, long sizeBytes, long avgSpeedBps,
+                                 boolean success, @Nullable String fileUri) {
         if (role == null) return;
         String direction = ROLE_SENDER.equals(role) ? "SEND" : "RECEIVE";
         TransferRepository repo = TransferRepository.getInstance(this);
-        repo.insert(repo.buildRecord(direction, fileName, sizeBytes, success, avgSpeedBps, null));
+        TransferRecordEntity record = repo.buildRecord(
+                direction, fileName, sizeBytes, success, avgSpeedBps, fileUri);
+        repo.insert(record);
+
+        // 接收方：收集 URI 供預覽使用
+        if (ROLE_RECEIVER.equals(role) && fileUri != null && success) {
+            receivedFileUris.add(fileUri);
+        }
     }
 
     // ══════════════════════════════════════════════════════════

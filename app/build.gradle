@@ -66,6 +66,9 @@ dependencies {
     // ── Document file（SAF Uri 輔助）───────────────────────────
     implementation 'androidx.documentfile:documentfile:1.0.1'
 
+    // ── ViewPager2（檔案預覽滑動切換）──────────────────────────
+    implementation 'androidx.viewpager2:viewpager2:1.1.0'
+
     // ── Test ──────────────────────────────────────────────────
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'

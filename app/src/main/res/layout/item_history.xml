@@ -1,80 +1,111 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:background="@color/notion_bg"
+    android:layout_height="80dp"
+    android:orientation="horizontal"
+    android:background="@drawable/notion_card"
+    android:layout_marginStart="16dp"
+    android:layout_marginEnd="16dp"
+    android:layout_marginTop="6dp"
     android:clickable="true"
     android:focusable="true"
     android:foreground="?attr/selectableItemBackground">
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:paddingTop="14dp"
-        android:paddingBottom="14dp"
-        android:gravity="center_vertical">
+    <!-- 左邊：縮圖容器 80x80dp -->
+    <FrameLayout
+        android:id="@+id/thumbContainer"
+        android:layout_width="80dp"
+        android:layout_height="80dp">
 
-        <!-- Direction icon circle -->
+        <!-- 圖片/影片縮圖 -->
+        <ImageView
+            android:id="@+id/ivThumb"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:visibility="gone"/>
+
+        <!-- 影片 play overlay -->
+        <ImageView
+            android:id="@+id/ivThumbPlay"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_gravity="center"
+            android:src="@android:drawable/ic_media_play"
+            android:tint="#CCFFFFFF"
+            android:visibility="gone"/>
+
+        <!-- 非圖影片的檔案 icon -->
+        <ImageView
+            android:id="@+id/ivFileIcon"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_gravity="center"
+            android:tint="@color/label_secondary"
+            android:visibility="gone"/>
+
+        <!-- 方向指示條（左邊緣） -->
+        <View
+            android:id="@+id/ivStatus"
+            android:layout_width="4dp"
+            android:layout_height="match_parent"
+            android:layout_gravity="start"/>
+    </FrameLayout>
+
+    <!-- 右邊：資訊欄 -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center_vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp">
+
+        <!-- 方向 + 檔名 -->
         <LinearLayout
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="@drawable/notion_card"
-            android:gravity="center">
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
             <TextView
                 android:id="@+id/tvDirectionIcon"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:textColor="?attr/colorPrimary"/>
-        </LinearLayout>
-
-        <!-- Content -->
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:layout_marginStart="14dp"
-            android:layout_marginEnd="8dp">
+                android:textSize="14sp"
+                android:textColor="?attr/colorPrimary"
+                android:layout_marginEnd="4dp"/>
 
             <TextView
                 android:id="@+id/tvFileName"
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:textSize="14sp"
+                android:textColor="@color/label_primary"
                 android:textStyle="bold"
-                android:textColor="@color/notion_text_primary"
                 android:maxLines="1"
-                android:ellipsize="end"/>
-
-            <TextView
-                android:id="@+id/tvMeta"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textSize="12sp"
-                android:textColor="@color/notion_text_tertiary"
-                android:layout_marginTop="2dp"/>
+                android:ellipsize="middle"/>
         </LinearLayout>
 
-        <!-- Status dot -->
-        <View
-            android:id="@+id/ivStatus"
-            android:layout_width="8dp"
-            android:layout_height="8dp"
-            android:background="@drawable/theme_circle"/>
-    </LinearLayout>
+        <!-- 時間 + peer -->
+        <TextView
+            android:id="@+id/tvMeta"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="@color/label_secondary"
+            android:layout_marginTop="2dp"/>
 
-    <!-- Bottom separator -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@color/notion_border"/>
+        <!-- 大小 + 速度 -->
+        <TextView
+            android:id="@+id/tvSize"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="11sp"
+            android:textColor="@color/label_tertiary"
+            android:layout_marginTop="2dp"/>
+    </LinearLayout>
 
 </LinearLayout>

@@ -34,8 +34,10 @@ import com.kisslink.transfer.FileTransferService;
 import com.kisslink.transfer.SessionState;
 import com.kisslink.transfer.TransferProgress;
 import com.kisslink.ui.card.CardDisplayActivity;
+import com.kisslink.ui.main.FilePreviewFragment;
 
 import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 傳輸流程 BottomSheet（取代 PairingActivity + TransferActivity 的主要使用情境）。
@@ -432,8 +434,17 @@ public class TransferBottomSheet extends BottomSheetDialogFragment {
         ImageButton btnClose = rootView.findViewById(R.id.btnClose);
         btnClose.setOnClickListener(v -> dismissWithCancel());
 
-        // 完成確定按鈕
-        rootView.findViewById(R.id.btnDone).setOnClickListener(v -> dismiss());
+        // 完成確定按鈕（接收方：先顯示預覽再 dismiss）
+        rootView.findViewById(R.id.btnDone).setOnClickListener(v -> {
+            if (FileTransferService.ROLE_RECEIVER.equals(role) && binder != null) {
+                List<String> receivedUris = binder.getReceivedFileUris();
+                if (!receivedUris.isEmpty()) {
+                    FilePreviewFragment.newInstance(receivedUris)
+                            .show(getParentFragmentManager(), "preview");
+                }
+            }
+            dismiss();
+        });
 
         // 角色文字 & 提示文字
         if (FileTransferService.ROLE_SENDER.equals(role)) {

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/transparent">
+
+    <!-- ViewPager2 全螢幕 -->
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/viewPager"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"/>
+
+    <!-- X 關閉按鈕（右上角） -->
+    <ImageButton
+        android:id="@+id/btnClosePreview"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="48dp"
+        android:layout_marginEnd="16dp"
+        android:src="@android:drawable/ic_menu_close_clear_cancel"
+        android:background="@drawable/nfc_circle_bg"
+        android:contentDescription="關閉"
+        android:tint="#FFFFFF"/>
+
+    <!-- 頁碼指示（底部中央） -->
+    <TextView
+        android:id="@+id/tvPageIndicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="48dp"
+        android:text="1 / 1"
+        android:textColor="#AAFFFFFF"
+        android:textSize="14sp"
+        android:visibility="gone"/>
+
+</FrameLayout>

@@ -9,6 +9,7 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Log;
 
+import androidx.annotation.Nullable;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
@@ -58,9 +59,10 @@ public class TransferClient {
     /** 設定逐檔完成回呼（用於可靠的歷史紀錄，不經會合併的 LiveData）。 */
     public void setEventListener(TransferEventListener l) { this.eventListener = l; }
 
-    private void fireFileCompleted(String name, long size, long speed, boolean success) {
+    private void fireFileCompleted(String name, long size, long speed, boolean success,
+                                   @Nullable String fileUri) {
         TransferEventListener l = eventListener;
-        if (l != null && name != null) l.onFileCompleted(name, size, speed, success);
+        if (l != null && name != null) l.onFileCompleted(name, size, speed, success, fileUri);
     }
 
     private final MutableLiveData<TransferProgress> progressLd =
@@ -157,7 +159,7 @@ public class TransferClient {
         } catch (IOException | TransferProtocol.InvalidPacketException e) {
             if (!cancelled) {
                 Log.e(TAG, "Receive error", e);
-                fireFileCompleted(curName, curSize, 0, false); // 進行中的檔案記為失敗
+                fireFileCompleted(curName, curSize, 0, false, null); // 進行中的檔案記為失敗
                 postProgress(TransferProgress.error("接收失敗：" + e.getMessage()));
             }
         } finally {
@@ -265,7 +267,7 @@ public class TransferClient {
 
         long elapsed = System.currentTimeMillis() - startMs;
         long avgSpeed = elapsed > 0 ? doneBytes * 1000 / elapsed : 0;
-        fireFileCompleted(fileName, totalSize, avgSpeed, true); // 可靠的逐檔成功回報
+        fireFileCompleted(fileName, totalSize, avgSpeed, true, outputUri.toString()); // 可靠的逐檔成功回報
         curName = null;
 
         postProgress(new TransferProgress.Builder()
